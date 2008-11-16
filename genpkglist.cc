@@ -506,12 +506,8 @@ int main(int argc, char ** argv)
    for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
       struct stat sb;
 
-      if (progressBar) {
-         if (entry_cur)
-            printf("\b\b\b\b\b\b\b\b\b\b");
-         printf(" %04i/%04i", entry_cur + 1, entry_no);
-         fflush(stdout);
-      }
+      if (progressBar)
+	 simpleProgress(entry_cur + 1, entry_no);
 
       if (stat(dirEntries[entry_cur]->d_name, &sb) < 0) {
 	    cerr << "\nWarning: " << strerror(errno) << ": " << 
