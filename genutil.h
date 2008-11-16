@@ -19,7 +19,7 @@ int selectRPMs(struct dirent *ent)
 int selectRPMs(const struct dirent *ent)
 #endif
 {
-   const char *d = ent->d_name;
-   return (*d != '.' && endswith(d, ".rpm"));
+   const char *b = ent->d_name;
+   return (*b != '.' && endswith(b, ".rpm"));
 }
 
