@@ -28,7 +28,7 @@
 
 #define CRPMTAG_TIMESTAMP   1012345
 
-int tags[] =  {
+raptTag tags[] =  {
        RPMTAG_NAME, 
        RPMTAG_EPOCH,
        RPMTAG_VERSION,
@@ -61,7 +61,7 @@ int tags[] =  {
        RPMTAG_OBSOLETEFLAGS,
        RPMTAG_OBSOLETEVERSION
 };
-int numTags = sizeof(tags) / sizeof(int);
+int numTags = sizeof(tags) / sizeof(tags[0]);
 
 
 
@@ -210,39 +210,15 @@ bool loadUpdateInfo(char *path, map<string,UpdateInfo> &map)
    return true;
 }
 
-#if RPM_VERSION >= 0x040000
-// No prototype from rpm after 4.0.
-extern "C" {
-int headerGetRawEntry(Header h, raptTag tag, raptTagType * type,
-		      raptTagData p, raptTagCount *c);
-}
-#endif
 
 bool copyFields(Header h, Header newHeader,
 		FILE *idxfile, const char *directory, const char *filename,
 		unsigned filesize, map<string,UpdateInfo> &updateInfo,
 		bool fullFileList)
 {
-   int i;
    raptInt size[1];
-
    size[0] = filesize;
    
-   // the std tags
-   for (i = 0; i < numTags; i++) {
-      raptTagType type;
-      raptTagCount count;
-      raptTagData data;
-      int res;
-      
-      // Copy raw entry, so that internationalized strings
-      // will get copied correctly.
-      res = headerGetRawEntry(h, (raptTag) tags[i], &type, &data, &count);
-      if (res != 1)
-	 continue;
-      headerAddEntry(newHeader, (raptTag) tags[i], type, data, count);
-   }
- 
    if (fullFileList) {
       raptTagType type1, type2, type3;
       raptTagCount count1, count2, count3;
@@ -509,6 +485,8 @@ int main(int argc, char ** argv)
       }
 
       Header newHeader = headerNew();
+      copyTags(h, newHeader, numTags, tags);
+
       copyFields(h, newHeader, idxfile, dirtag.c_str(), fname,
 		 sb.st_size, updateInfo, fullFileList);
 

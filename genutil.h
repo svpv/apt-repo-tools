@@ -76,3 +76,32 @@ Header readHeader(const char *path)
    return NULL;
 }
 
+#if RPM_VERSION >= 0x040000
+// No prototype from rpm after 4.0.
+extern "C"
+int headerGetRawEntry(Header h, raptTag tag, raptTagType * type,
+		      raptTagData p, raptTagCount *c);
+#endif
+
+static
+void copyTag(Header h1, Header h2, raptTag tag)
+{
+   raptTagType type;
+   raptTagCount count;
+   raptTagData data;
+   // Copy raw entry, so that internationalized strings
+   // will get copied correctly.
+   int rc = headerGetRawEntry(h1, tag, &type, &data, &count);
+   if (rc == 1) {
+      headerAddEntry(h2, tag, type, data, count);
+      headerFreeData(data, (rpmTagType)type);
+   }
+}
+
+static
+void copyTags(Header h1, Header h2, int tagc, raptTag tagv[])
+{
+   for (int i = 0; i < tagc; i++)
+      copyTag(h1, h2, tagv[i]);
+}
+

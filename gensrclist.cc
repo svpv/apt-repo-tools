@@ -29,7 +29,7 @@
 
 using namespace std;
 
-int tags[] =  {
+raptTag tags[] =  {
        RPMTAG_NAME,
        RPMTAG_EPOCH,
        RPMTAG_VERSION,
@@ -50,7 +50,7 @@ int tags[] =  {
        RPMTAG_REQUIRENAME,
        RPMTAG_REQUIREVERSION
 };
-int numTags = sizeof(tags) / sizeof(int);
+int numTags = sizeof(tags) / sizeof(tags[0]);
 
 bool readRPMTable(char *file, map<string, list<char*>* > &table)
 {
@@ -104,14 +104,6 @@ void usage()
    cerr << " --progress      show a progress bar" << endl;
    cerr << " --cachedir=DIR  use a custom directory for package md5sum cache"<<endl;
 }
-
-#if RPM_VERSION >= 0x040000
-extern "C" {
-// No prototype from rpm after 4.0.
-int headerGetRawEntry(Header h, raptTag tag, raptTagType * type,
-		      raptTagData p, raptTagCount *c);
-}
-#endif
 
 int main(int argc, char ** argv) 
 {
@@ -271,24 +263,7 @@ int main(int argc, char ** argv)
       }
 
       Header newHeader = headerNew();
-
-	    int i;
-	    
-	    // the std tags
-	    for (i = 0; i < numTags; i++) {
-	       raptTagType type;
-	       raptTagCount count;
-	       raptTagData data;
-	       int res;
-	       
-	       // Copy raw entry, so that internationalized strings
-	       // will get copied correctly.
-	       res = headerGetRawEntry(h, (raptTag) tags[i], &type, &data, &count);
-	       if (res != 1)
-		  continue;
-	       headerAddEntry(newHeader, (raptTag) tags[i], type, data, count);
-	    }
-	    
+      copyTags(h, newHeader, numTags, tags);
 	    
 	    // our additional tags
 	    headerAddEntry(newHeader, CRPMTAG_DIRECTORY, RPM_STRING_TYPE,
