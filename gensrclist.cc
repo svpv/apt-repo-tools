@@ -264,18 +264,7 @@ int main(int argc, char ** argv)
 
       Header newHeader = headerNew();
       copyTags(h, newHeader, numTags, tags);
-	    
-	    // our additional tags
-	    headerAddEntry(newHeader, CRPMTAG_DIRECTORY, RPM_STRING_TYPE,
-			   srpmdir.c_str(), 1);
-	    
-	    headerAddEntry(newHeader, CRPMTAG_FILENAME, RPM_STRING_TYPE, 
-			   fname, 1);
-
-	    raptInt size[1];
-	    size[0] = sb.st_size;
-	    headerAddEntry(newHeader, CRPMTAG_FILESIZE, RPM_INT32_TYPE,
-			   size, 1);
+      addAptTags(newHeader, srpmdir.c_str(), fname, sb.st_size);
 	    
 	    {
 	       char md5[34];

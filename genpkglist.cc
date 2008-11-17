@@ -216,9 +216,6 @@ bool copyFields(Header h, Header newHeader,
 		unsigned filesize, map<string,UpdateInfo> &updateInfo,
 		bool fullFileList)
 {
-   raptInt size[1];
-   size[0] = filesize;
-   
    if (fullFileList) {
       raptTagType type1, type2, type3;
       raptTagCount count1, count2, count3;
@@ -265,14 +262,7 @@ bool copyFields(Header h, Header newHeader,
 	 fprintf(idxfile, "%s %s\n", srpm, name);
       }
    }
-   // our additional tags
-   headerAddEntry(newHeader, CRPMTAG_DIRECTORY, RPM_STRING_TYPE,
-		  directory, 1);
-   headerAddEntry(newHeader, CRPMTAG_FILENAME, RPM_STRING_TYPE, 
-		  filename, 1);
-   headerAddEntry(newHeader, CRPMTAG_FILESIZE, RPM_INT32_TYPE,
-		  size, 1);
-      
+
    // update description tags
    if (updateInfo.find(string(filename)) != updateInfo.end()) {
       const char *tmp;
@@ -486,6 +476,7 @@ int main(int argc, char ** argv)
 
       Header newHeader = headerNew();
       copyTags(h, newHeader, numTags, tags);
+      addAptTags(newHeader, dirtag.c_str(), fname, sb.st_size);
 
       copyFields(h, newHeader, idxfile, dirtag.c_str(), fname,
 		 sb.st_size, updateInfo, fullFileList);
