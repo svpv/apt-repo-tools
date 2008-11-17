@@ -15,6 +15,7 @@
 #include <assert.h>
 
 #include <map>
+#include <set>
 #include <iostream>
 
 #include <apt-pkg/error.h>
@@ -172,6 +173,25 @@ static void copyStrippedFileList(Header header, Header newHeader)
    FREE(dindexes);
 }
 
+
+static
+void findDepFiles(Header h, set<string> &depFiles, raptTag tag)
+{
+   raptTagType type;
+   raptTagCount count;
+   raptTagData data;
+   int rc = headerGetEntry(h, tag, &type, &data, &count);
+   if (rc != 1)
+      return;
+   assert(type == RPM_STRING_ARRAY_TYPE);
+   const char **deps = (const char **) data;
+   for (int i = 0; i < count; i++) {
+      const char *dep = deps[i];
+      if (*dep == '/')
+	 depFiles.insert(dep);
+   }
+   headerFreeData(data, (rpmTagType)type);
+}
 
 
 typedef struct {
@@ -385,6 +405,36 @@ int main(int argc, char ** argv)
       cerr << "genpkglist: error creating file " << pkglist_path << ": "
 	  << strerror(errno) << endl;
       return 1;
+   }
+
+   set<string> depFiles;
+
+   if (!fullFileList)
+   // File list cannot be stripped in a dumb manner - this is going
+   // unmet dependencies.  First pass is required to find depFiles.
+   for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
+
+      if (progressBar)
+	 simpleProgress(entry_cur + 1, entry_no);
+
+      const char *fname = dirEntries[entry_cur]->d_name;
+
+      struct stat sb;
+      if (stat(fname, &sb) < 0) {
+	 cerr << "Warning: " << fname << ": " << strerror(errno) << endl;
+	 continue;
+      }
+
+      Header h = readHeader(fname);
+      if (h == NULL) {
+	 cerr << "Warning: " << fname << ": cannot read package header" << endl;
+	 continue;
+      }
+
+      findDepFiles(h, depFiles, RPMTAG_REQUIRENAME);
+      findDepFiles(h, depFiles, RPMTAG_PROVIDENAME);
+      findDepFiles(h, depFiles, RPMTAG_CONFLICTNAME);
+      findDepFiles(h, depFiles, RPMTAG_OBSOLETENAME);
    }
 
    CachedMD5 md5cache(string(op_dir) + string(op_suf), "genpkglist");
