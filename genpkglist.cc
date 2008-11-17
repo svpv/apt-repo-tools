@@ -225,62 +225,6 @@ void addInfoTags(Header h, const char *fname,
 }
 
 
-bool copyFields(Header h, Header newHeader,
-		FILE *idxfile, const char *directory, const char *filename,
-		unsigned filesize, map<string,UpdateInfo> &updateInfo,
-		bool fullFileList)
-{
-   if (fullFileList) {
-      raptTagType type1, type2, type3;
-      raptTagCount count1, count2, count3;
-      char **dnames, **bnames, **dindexes;
-      raptTagData dnameval, bnameval, dindexval;
-      int res;
-   
-      res = headerGetEntry(h, RPMTAG_DIRNAMES, &type1, 
-			   &dnameval, &count1);
-      res = headerGetEntry(h, RPMTAG_BASENAMES, &type2, 
-			   &bnameval, &count2);
-      res = headerGetEntry(h, RPMTAG_DIRINDEXES, &type3, 
-			   &dindexval, &count3);
-
-      dnames = (char **)dnameval;
-      bnames = (char **)bnameval;
-      dindexes = (char **)dindexval;
-
-      if (res == 1) {
-	 headerAddEntry(newHeader, RPMTAG_DIRNAMES, type1, dnames, count1);
-	 headerAddEntry(newHeader, RPMTAG_BASENAMES, type2, bnames, count2);
-	 headerAddEntry(newHeader, RPMTAG_DIRINDEXES, type3, dindexes, count3);
-      }
-   } else {
-       copyStrippedFileList(h, newHeader);
-   }
-   
-   // update index of srpms
-   if (idxfile) {
-      raptTagType type;
-      raptTagCount count;
-      raptTagData srpmval, nameval;
-      char *srpm, *name;
-      int res;
-      
-      res = headerGetEntry(h, RPMTAG_NAME, &type, 
-			   &nameval, &count);
-      res = headerGetEntry(h, RPMTAG_SOURCERPM, &type, 
-			   &srpmval, &count);
-      name = (char *)nameval;
-      srpm = (char *)srpmval;
-
-      if (res == 1) {
-	 fprintf(idxfile, "%s %s\n", srpm, name);
-      }
-   }
-
-   return true;
-}
-
-
 void usage()
 {
    cerr << "genpkglist " << VERSION << endl;
@@ -308,7 +252,6 @@ int main(int argc, char ** argv)
    char *op_suf;
    char *op_index = NULL;
    char *op_update = NULL;
-   FILE *idxfile;
    int i;
    bool fullFileList = false;
    bool progressBar = false;
@@ -383,17 +326,17 @@ int main(int argc, char ** argv)
 	 exit(1);
       }
    }
+
+   FILE *idxfp = NULL;
    if (op_index) {
-      idxfile = fopen(op_index, "w+");
-      if (!idxfile) {
+      idxfp = fopen(op_index, "w+");
+      if (!idxfp) {
 	 cerr << "genpkglist: could not open " << op_index << " for writing";
 	 perror("");
 	 exit(1);
       }
-   } else {
-      idxfile = NULL;
    }
-   
+
    {
       char cwd[PATH_MAX];
       
@@ -467,16 +410,27 @@ int main(int argc, char ** argv)
 
       Header newHeader = headerNew();
       copyTags(h, newHeader, numTags, tags);
+      if (!fullFileList)
+	 copyStrippedFileList(h, newHeader);
+      else {
+	 copyTag(h, newHeader, RPMTAG_BASENAMES);
+	 copyTag(h, newHeader, RPMTAG_DIRNAMES);
+	 copyTag(h, newHeader, RPMTAG_DIRINDEXES);
+      }
       addAptTags(newHeader, dirtag.c_str(), fname, sb.st_size);
       if (op_update)
 	 addInfoTags(newHeader, fname, updateInfo);
 
-      copyFields(h, newHeader, idxfile, dirtag.c_str(), fname,
-		 sb.st_size, updateInfo, fullFileList);
-
       char md5[34];
       md5cache.MD5ForFile(fname, sb.st_mtime, md5);
       addStringTag(newHeader, CRPMTAG_MD5, md5);
+
+      if (idxfp) {
+	 const char *srpm = getStringTag(h, RPMTAG_SOURCERPM);
+	 const char *name = getStringTag(h, RPMTAG_NAME);
+	 if (srpm && name)
+	    fprintf(idxfp, "%s %s\n", srpm, name);
+      }
 
       headerWrite(outfd, newHeader, HEADER_MAGIC_YES);
 

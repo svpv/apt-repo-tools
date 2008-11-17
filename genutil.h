@@ -111,6 +111,20 @@ int addStringTag(Header h, raptTag tag, const char *str)
    return headerAddEntry(h, tag, RPM_STRING_TYPE, str, 1);
 }
 
+static inline
+const char *getStringTag(Header h, raptTag tag)
+{
+   raptTagType type;
+   raptTagCount count;
+   raptTagData data;
+   int rc = headerGetEntry(h, tag, &type, &data, &count);
+   if (rc == 1) {
+      assert(type == RPM_STRING_TYPE && count == 1);
+      return (const char *)data;
+   }
+   return NULL;
+}
+
 static
 void addAptTags(Header h, const char *d, const char *b, unsigned int st_size)
 {
