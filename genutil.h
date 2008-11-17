@@ -45,3 +45,34 @@ void simpleProgress(unsigned int current, unsigned int total)
    fflush(stdout);
 }
 
+#if RPM_VERSION >= 0x040100
+#include <rpm/rpmts.h>
+#endif
+
+static
+Header readHeader(const char *path)
+{
+   FD_t fd = Fopen(path, "r");
+   if (fd == NULL)
+      return NULL;
+   Header h = NULL;
+#if RPM_VERSION >= 0x040100
+   static rpmts ts = NULL;
+   if (ts == NULL) {
+      rpmReadConfigFiles(NULL, NULL);
+      ts = rpmtsCreate();
+      assert(ts);
+      rpmtsSetVSFlags(ts, (rpmVSFlags_e)-1);
+   }
+   int rc = rpmReadPackageFile(ts, fd, dirEntries[entry_cur]->d_name, &h);
+   bool ok = (rc == RPMRC_OK || rc == RPMRC_NOTTRUSTED || rc == RPMRC_NOKEY);
+#else
+   int rc = rpmReadPackageHeader(fd, &h, NULL, NULL, NULL);
+   bool ok = (rc == 0);
+#endif
+   Fclose(fd);
+   if (ok)
+      return h;
+   return NULL;
+}
+

@@ -27,10 +27,6 @@
 #include "cached_md5.h"
 #include "genutil.h"
 
-#if RPM_VERSION >= 0x040100
-#include <rpm/rpmts.h>
-#endif
- 
 using namespace std;
 
 int tags[] =  {
@@ -122,13 +118,9 @@ int main(int argc, char ** argv)
    char buf[300];
    char cwd[PATH_MAX];
    string srpmdir;
-   FD_t outfd, fd;
    struct dirent **dirEntries;
-   int rc, i;
-   Header h;
-   raptInt size[1];
+   int i;
    int entry_no, entry_cur;
-   CachedMD5 *md5cache;
    map<string, list<char*>* > rpmTable; // table that maps srpm -> generated rpm
    bool mapi = false;
    bool progressBar = false;
@@ -180,8 +172,6 @@ int main(int argc, char ** argv)
    if (!readRPMTable(arg_srpmindex, rpmTable))
        exit(1);
    
-   md5cache = new CachedMD5(string(arg_dir)+string(arg_suffix), "gensrclist");
-
    if(getcwd(cwd, PATH_MAX) == 0)
    {
       cerr << argv[0] << ": " << strerror(errno) << endl;
@@ -246,6 +236,7 @@ int main(int argc, char ** argv)
    else
       sprintf(buf, "%s/srclist.%s", cwd, arg_suffix);
    
+   FD_t outfd;
    if (srcListAppend == true && FileExists(buf)) {
       outfd = Fopen(buf, "a");
    } else {
@@ -258,48 +249,30 @@ int main(int argc, char ** argv)
       return 1;
    }
 
-#if RPM_VERSION >= 0x040100
-   rpmReadConfigFiles(NULL, NULL);
-   rpmts ts = rpmtsCreate();
-   rpmtsSetVSFlags(ts, (rpmVSFlags_e)-1);
-#else
-   Header sigs;
-#endif   
-  
+   CachedMD5 md5cache(string(arg_dir) + string(arg_suffix), "gensrclist");
+
    for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
-      struct stat sb;
 
       if (progressBar)
 	 simpleProgress(entry_cur + 1, entry_no);
 
-      if (stat(dirEntries[entry_cur]->d_name, &sb) < 0) {
-	 cerr << "\nWarning: " << strerror(errno) << ": " << 
-	         dirEntries[entry_cur]->d_name << endl;
-	 continue;
-      }
-      
-      fd = Fopen(dirEntries[entry_cur]->d_name, "r");
-	 
-      if (!fd) {
-	 cerr << "\nWarning: " << strerror(errno) << ": " <<
-	         dirEntries[entry_cur]->d_name << endl;
+      const char *fname = dirEntries[entry_cur]->d_name;
+
+      struct stat sb;
+      if (stat(fname, &sb) < 0) {
+	 cerr << "Warning: " << fname << ": " << strerror(errno) << endl;
 	 continue;
       }
 
-      size[0] = sb.st_size;
-	 
-#if RPM_VERSION >= 0x040100
-      rc = rpmReadPackageFile(ts, fd, dirEntries[entry_cur]->d_name, &h);
-      if (rc == RPMRC_OK || rc == RPMRC_NOTTRUSTED || rc == RPMRC_NOKEY) {
-#else
-      rc = rpmReadPackageInfo(fd, &sigs, &h);
-      if (rc == 0) {
-#endif
-	    Header newHeader;
+      Header h = readHeader(fname);
+      if (h == NULL) {
+	 cerr << "Warning: " << fname << ": cannot read package header" << endl;
+	 continue;
+      }
+
+      Header newHeader = headerNew();
+
 	    int i;
-	    bool foundInIndex;
-	    
-	    newHeader = headerNew();
 	    
 	    // the std tags
 	    for (i = 0; i < numTags; i++) {
@@ -322,24 +295,27 @@ int main(int argc, char ** argv)
 			   srpmdir.c_str(), 1);
 	    
 	    headerAddEntry(newHeader, CRPMTAG_FILENAME, RPM_STRING_TYPE, 
-			   dirEntries[entry_cur]->d_name, 1);
+			   fname, 1);
+
+	    raptInt size[1];
+	    size[0] = sb.st_size;
 	    headerAddEntry(newHeader, CRPMTAG_FILESIZE, RPM_INT32_TYPE,
 			   size, 1);
 	    
 	    {
 	       char md5[34];
 	       
-	       md5cache->MD5ForFile(dirEntries[entry_cur]->d_name, sb.st_mtime, md5);
+	       md5cache.MD5ForFile(fname, sb.st_mtime, md5);
 	       
 	       headerAddEntry(newHeader, CRPMTAG_MD5, RPM_STRING_TYPE,
 			      md5, 1);
 	    }
 	    
-	    foundInIndex = false;
+	    bool foundInIndex = false;
 	    {
 	       int count = 0;
 	       char **l = NULL;
-	       list<char*> *rpmlist = rpmTable[string(dirEntries[entry_cur]->d_name)];
+	       list<char*> *rpmlist = rpmTable[fname];
 	       
 	       if (rpmlist) {
 		  l = new char *[rpmlist->size()];
@@ -363,24 +339,10 @@ int main(int argc, char ** argv)
 	    
 	    headerFree(newHeader);
 	    headerFree(h);
-#if RPM_VERSION < 0x040100
-	    rpmFreeSignature(sigs);
-#endif
-      } else {
-	 cerr << "\nWarning: Skipping malformed RPM: " <<
-	         dirEntries[entry_cur]->d_name << endl;
-      }
-      Fclose(fd);
    } 
    
    Fclose(outfd);
 
-#if RPM_VERSION >= 0x040100
-   ts = rpmtsFree(ts);
-#endif   
-   
-   delete md5cache;
-   
    return 0;
 }
 

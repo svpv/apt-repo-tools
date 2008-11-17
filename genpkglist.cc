@@ -26,10 +26,6 @@
 #include "cached_md5.h"
 #include "genutil.h"
 
-#if RPM_VERSION >= 0x040100
-#include <rpm/rpmts.h>
-#endif
-
 #define CRPMTAG_TIMESTAMP   1012345
 
 int tags[] =  {
@@ -223,7 +219,7 @@ int headerGetRawEntry(Header h, raptTag tag, raptTagType * type,
 #endif
 
 bool copyFields(Header h, Header newHeader,
-		FILE *idxfile, const char *directory, char *filename,
+		FILE *idxfile, const char *directory, const char *filename,
 		unsigned filesize, map<string,UpdateInfo> &updateInfo,
 		bool fullFileList)
 {
@@ -349,11 +345,9 @@ int main(int argc, char ** argv)
 {
    string rpmsdir;
    string pkglist_path;
-   FD_t outfd, fd;
    struct dirent **dirEntries;
    int entry_no, entry_cur;
    map<string,UpdateInfo> updateInfo;
-   CachedMD5 *md5cache;
    char *op_dir;
    char *op_suf;
    char *op_index = NULL;
@@ -480,7 +474,7 @@ int main(int argc, char ** argv)
    else
 	   pkglist_path = pkglist_path + "/base/pkglist." + op_suf;
    
-   
+   FD_t outfd;
    if (pkgListAppend == true && FileExists(pkglist_path)) {
       outfd = Fopen(pkglist_path.c_str(), "a");
    } else {
@@ -493,79 +487,42 @@ int main(int argc, char ** argv)
       return 1;
    }
 
-   md5cache = new CachedMD5(string(op_dir) + string(op_suf), "genpkglist");
-
-#if RPM_VERSION >= 0x040100
-   rpmReadConfigFiles(NULL, NULL);
-   rpmts ts = rpmtsCreate();
-   rpmtsSetVSFlags(ts, (rpmVSFlags_e)-1);
-#else
-   int isSource;
-#endif   
+   CachedMD5 md5cache(string(op_dir) + string(op_suf), "genpkglist");
 
    for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
-      struct stat sb;
 
       if (progressBar)
 	 simpleProgress(entry_cur + 1, entry_no);
 
-      if (stat(dirEntries[entry_cur]->d_name, &sb) < 0) {
-	    cerr << "\nWarning: " << strerror(errno) << ": " << 
-		    dirEntries[entry_cur]->d_name << endl;
-	    continue;
+      const char *fname = dirEntries[entry_cur]->d_name;
+
+      struct stat sb;
+      if (stat(fname, &sb) < 0) {
+	 cerr << "Warning: " << fname << ": " << strerror(errno) << endl;
+	 continue;
       }
 
-      {
-	 Header h;
-	 int rc;
-	 
-	 fd = Fopen(dirEntries[entry_cur]->d_name, "r");
-
-	 if (!fd) {
-	    cerr << "\nWarning: " << strerror(errno) << ": " << 
-		    dirEntries[entry_cur]->d_name << endl;
-	    continue;
-	 }
-	 
-#if RPM_VERSION >= 0x040100
-	 rc = rpmReadPackageFile(ts, fd, dirEntries[entry_cur]->d_name, &h);
-	 if (rc == RPMRC_OK || rc == RPMRC_NOTTRUSTED || rc == RPMRC_NOKEY) {
-#else
-	 rc = rpmReadPackageHeader(fd, &h, &isSource, NULL, NULL);
-	 if (rc == 0) {
-#endif
-	    Header newHeader;
-	    char md5[34];
-	    
-	    newHeader = headerNew();
-	    
-	    copyFields(h, newHeader, idxfile, dirtag.c_str(),
-		       dirEntries[entry_cur]->d_name,
-		       sb.st_size, updateInfo, fullFileList);
-
-	    md5cache->MD5ForFile(string(dirEntries[entry_cur]->d_name), 
-				 sb.st_mtime, md5);
-	    headerAddEntry(newHeader, CRPMTAG_MD5, RPM_STRING_TYPE, md5, 1);
-
-	    headerWrite(outfd, newHeader, HEADER_MAGIC_YES);
-	    
-	    headerFree(newHeader);
-	    headerFree(h);
-	 } else {
-	    cerr << "\nWarning: Skipping malformed RPM: " << 
-		    dirEntries[entry_cur]->d_name << endl;
-	 }
-	 Fclose(fd);
+      Header h = readHeader(fname);
+      if (h == NULL) {
+	 cerr << "Warning: " << fname << ": cannot read package header" << endl;
+	 continue;
       }
+
+      Header newHeader = headerNew();
+      copyFields(h, newHeader, idxfile, dirtag.c_str(), fname,
+		 sb.st_size, updateInfo, fullFileList);
+
+      char md5[34];
+      md5cache.MD5ForFile(fname, sb.st_mtime, md5);
+      headerAddEntry(newHeader, CRPMTAG_MD5, RPM_STRING_TYPE, md5, 1);
+
+      headerWrite(outfd, newHeader, HEADER_MAGIC_YES);
+
+      headerFree(newHeader);
+      headerFree(h);
    }
 
    Fclose(outfd);
-
-#if RPM_VERSION >= 0x040100
-   ts = rpmtsFree(ts);
-#endif
-   
-   delete md5cache;
 
    return 0;
 }
