@@ -105,12 +105,18 @@ void copyTags(Header h1, Header h2, int tagc, raptTag tagv[])
       copyTag(h1, h2, tagv[i]);
 }
 
+static inline
+int addStringTag(Header h, raptTag tag, const char *str)
+{
+   return headerAddEntry(h, tag, RPM_STRING_TYPE, str, 1);
+}
+
 static
 void addAptTags(Header h, const char *d, const char *b, unsigned int st_size)
 {
    raptInt size[1] = { st_size };
-   headerAddEntry(h, CRPMTAG_DIRECTORY, RPM_STRING_TYPE, d, 1);
-   headerAddEntry(h, CRPMTAG_FILENAME, RPM_STRING_TYPE, b, 1);
+   addStringTag(h, CRPMTAG_DIRECTORY, d);
+   addStringTag(h, CRPMTAG_FILENAME, b);
    headerAddEntry(h, CRPMTAG_FILESIZE, RPM_INT32_TYPE, size, 1);
 }
 

@@ -65,14 +65,6 @@ int numTags = sizeof(tags) / sizeof(tags[0]);
 
 
 
-typedef struct {
-   string importance;
-   string date;
-   string summary;
-   string url;
-} UpdateInfo;
-
-
 static
 int usefulFile(const char *d, const char *b)
 {
@@ -182,9 +174,16 @@ static void copyStrippedFileList(Header header, Header newHeader)
 
 
 
+typedef struct {
+   string importance;
+   string date;
+   string summary;
+   string url;
+} UpdateInfo;
 
 
-bool loadUpdateInfo(char *path, map<string,UpdateInfo> &map)
+static
+bool loadUpdateInfo(char *path, map<string,UpdateInfo> &M)
 {
    FileFd F(path, FileFd::ReadOnly);
    if (_error->PendingError()) 
@@ -205,9 +204,24 @@ bool loadUpdateInfo(char *path, map<string,UpdateInfo> &map)
       info.summary = Section.FindS("Summary");
       info.url = Section.FindS("URL");
 
-      map[file] = info;
+      M[file] = info;
    }
    return true;
+}
+
+
+static
+void addInfoTags(Header h, const char *fname,
+		 const map<string,UpdateInfo> &M)
+{
+   map<string,UpdateInfo>::const_iterator I = M.find(fname);
+   if (I == M.end())
+      return;
+   const UpdateInfo &info = I->second;
+   addStringTag(h, CRPMTAG_UPDATE_SUMMARY, info.summary.c_str());
+   addStringTag(h, CRPMTAG_UPDATE_URL, info.url.c_str());
+   addStringTag(h, CRPMTAG_UPDATE_DATE, info.date.c_str());
+   addStringTag(h, CRPMTAG_UPDATE_IMPORTANCE, info.importance.c_str());
 }
 
 
@@ -263,29 +277,6 @@ bool copyFields(Header h, Header newHeader,
       }
    }
 
-   // update description tags
-   if (updateInfo.find(string(filename)) != updateInfo.end()) {
-      const char *tmp;
-      string name = string(filename);
-      
-      tmp = updateInfo[name].summary.c_str();
-      headerAddEntry(newHeader, CRPMTAG_UPDATE_SUMMARY,
-		     RPM_STRING_TYPE,
-		     tmp, 1);
-      tmp = updateInfo[name].url.c_str();
-      headerAddEntry(newHeader, CRPMTAG_UPDATE_URL,
-		     RPM_STRING_TYPE,
-		     tmp, 1);
-      tmp = updateInfo[name].date.c_str();
-      headerAddEntry(newHeader, CRPMTAG_UPDATE_DATE,
-		     RPM_STRING_TYPE,
-		     tmp, 1);
-      tmp = updateInfo[name].importance.c_str();
-      headerAddEntry(newHeader, CRPMTAG_UPDATE_IMPORTANCE,
-		     RPM_STRING_TYPE,
-		     tmp, 1);
-   }
-   
    return true;
 }
 
@@ -313,7 +304,6 @@ int main(int argc, char ** argv)
    string pkglist_path;
    struct dirent **dirEntries;
    int entry_no, entry_cur;
-   map<string,UpdateInfo> updateInfo;
    char *op_dir;
    char *op_suf;
    char *op_index = NULL;
@@ -385,6 +375,7 @@ int main(int argc, char ** argv)
       usage();
    }
    
+   map<string,UpdateInfo> updateInfo;
    if (op_update) {
       if (!loadUpdateInfo(op_update, updateInfo)) {
 	 cerr << "genpkglist: error reading update info from file " << op_update << endl;
@@ -477,13 +468,15 @@ int main(int argc, char ** argv)
       Header newHeader = headerNew();
       copyTags(h, newHeader, numTags, tags);
       addAptTags(newHeader, dirtag.c_str(), fname, sb.st_size);
+      if (op_update)
+	 addInfoTags(newHeader, fname, updateInfo);
 
       copyFields(h, newHeader, idxfile, dirtag.c_str(), fname,
 		 sb.st_size, updateInfo, fullFileList);
 
       char md5[34];
       md5cache.MD5ForFile(fname, sb.st_mtime, md5);
-      headerAddEntry(newHeader, CRPMTAG_MD5, RPM_STRING_TYPE, md5, 1);
+      addStringTag(newHeader, CRPMTAG_MD5, md5);
 
       headerWrite(outfd, newHeader, HEADER_MAGIC_YES);
 

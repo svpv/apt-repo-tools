@@ -251,8 +251,8 @@ int main(int argc, char ** argv)
 	    
       char md5[34];
       md5cache.MD5ForFile(fname, sb.st_mtime, md5);
-      headerAddEntry(newHeader, CRPMTAG_MD5, RPM_STRING_TYPE, md5, 1);
-	    
+      addStringTag(newHeader, CRPMTAG_MD5, md5);
+
       map<string, vector<const char *> >::const_iterator I = srpm2rpms.find(fname);
       if (I != srpm2rpms.end()) {
 	 const vector<const char *> &rpmv = I->second;
