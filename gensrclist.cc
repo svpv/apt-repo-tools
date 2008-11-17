@@ -52,42 +52,20 @@ raptTag tags[] =  {
 };
 int numTags = sizeof(tags) / sizeof(tags[0]);
 
-bool readRPMTable(char *file, map<string, list<char*>* > &table)
+static
+void readIndex(FILE *fp, map<string, vector<const char *> > &table)
 {
-   FILE *indexf;
-   char buf[512];
-   string srpm;
-   
-   indexf = fopen(file, "r");
-   if (!indexf) {
-      cerr << "gensrclist: could not open file " << file << " for reading: "
-	  << strerror(errno) << endl;
-      return false;
+   char line[512];
+   while (fgets(line, sizeof(line), fp)) {
+      line[strlen(line)-1] = '\0'; // trim newline
+      char *val = strchr(line, ' ');
+      assert(val);
+      *val++ = '\0';
+      const char *srpm = line;
+      const char *rpm = strdup(val);
+      assert(rpm);
+      table[srpm].push_back(rpm);
    }
-   
-   while (fgets(buf, 512, indexf)) {
-      char *f;
-      
-      buf[strlen(buf)-1] = '\0';
-      f = strchr(buf, ' ');
-      *f = '\0';
-      f++;
-      
-      srpm = string(buf);
-      
-      if (table.find(srpm) != table.end()) {
-	 list<char*> *l = table[srpm];
-	 l->push_front(strdup(f));
-      } else {
-	 list<char*> *l = new list<char*>;
-	 l->push_front(strdup(f));
-	 table[srpm] = l;
-      }
-   }
-   
-   fclose(indexf);
-   
-   return true;
 }
 
 
@@ -113,7 +91,6 @@ int main(int argc, char ** argv)
    struct dirent **dirEntries;
    int i;
    int entry_no, entry_cur;
-   map<string, list<char*>* > rpmTable; // table that maps srpm -> generated rpm
    bool mapi = false;
    bool progressBar = false;
    bool flatStructure = false;
@@ -161,8 +138,14 @@ int main(int argc, char ** argv)
       exit(1);
    }
    
-   if (!readRPMTable(arg_srpmindex, rpmTable))
-       exit(1);
+   map<string, vector<const char *> > srpm2rpms;
+   FILE *fp = fopen(arg_srpmindex, "r");
+   if (fp == NULL) {
+      cerr << "gensrclist: " << arg_srpmindex << ": " << strerror(errno) << endl;
+      return 1;
+   }
+   readIndex(fp, srpm2rpms);
+   fclose(fp);
    
    if(getcwd(cwd, PATH_MAX) == 0)
    {
@@ -266,43 +249,24 @@ int main(int argc, char ** argv)
       copyTags(h, newHeader, numTags, tags);
       addAptTags(newHeader, srpmdir.c_str(), fname, sb.st_size);
 	    
-	    {
-	       char md5[34];
-	       
-	       md5cache.MD5ForFile(fname, sb.st_mtime, md5);
-	       
-	       headerAddEntry(newHeader, CRPMTAG_MD5, RPM_STRING_TYPE,
-			      md5, 1);
-	    }
+      char md5[34];
+      md5cache.MD5ForFile(fname, sb.st_mtime, md5);
+      headerAddEntry(newHeader, CRPMTAG_MD5, RPM_STRING_TYPE, md5, 1);
 	    
-	    bool foundInIndex = false;
-	    {
-	       int count = 0;
-	       char **l = NULL;
-	       list<char*> *rpmlist = rpmTable[fname];
-	       
-	       if (rpmlist) {
-		  l = new char *[rpmlist->size()];
-		  
-		  foundInIndex = true;
-		  
-		  for (list<char*>::const_iterator i = rpmlist->begin();
-		       i != rpmlist->end();
-		       i++) {
-		     l[count++] = *i;
-		  }
-	       }
-	       
-	       if (count) {
-		  headerAddEntry(newHeader, CRPMTAG_BINARY,
-				 RPM_STRING_ARRAY_TYPE, l, count);
-	       }
-	    }
-	    if (foundInIndex || !mapi)
-		headerWrite(outfd, newHeader, HEADER_MAGIC_YES);
-	    
-	    headerFree(newHeader);
-	    headerFree(h);
+      map<string, vector<const char *> >::const_iterator I = srpm2rpms.find(fname);
+      if (I != srpm2rpms.end()) {
+	 const vector<const char *> &rpmv = I->second;
+	 assert(rpmv.size() > 0);
+	 headerAddEntry(newHeader, CRPMTAG_BINARY, RPM_STRING_ARRAY_TYPE,
+		        &rpmv[0], rpmv.size());
+	 headerWrite(outfd, newHeader, HEADER_MAGIC_YES);
+      }
+      else if (!mapi) { // write anyway
+	 headerWrite(outfd, newHeader, HEADER_MAGIC_YES);
+      }
+
+      headerFree(newHeader);
+      headerFree(h);
    } 
    
    Fclose(outfd);
