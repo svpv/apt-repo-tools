@@ -67,110 +67,99 @@ int numTags = sizeof(tags) / sizeof(tags[0]);
 
 
 static
-int usefulFile(const char *d, const char *b)
+bool usefulFile(const char *d, const char *b,
+	       const set<string> &depFiles)
 {
    // PATH-like directories
    if (endswith(d, "/bin/") || endswith(d, "/sbin/"))
-      return 1;
+      return true;
 
    // shared libraries
    if (strncmp(b, "lib", 3) == 0 && strstr(b + 3, ".so"))
-      return 1;
+      return true;
 
-   return 0;
+   // required by other packages
+   if (depFiles.find(string(d) + b) != depFiles.end()) {
+      // fprintf(stderr, "useful depfile: %s%s\n", d, b);
+      return true;
+   }
+
+   return false;
 }
 
 
-static void copyStrippedFileList(Header header, Header newHeader)
+static
+void copyStrippedFileList(Header h1, Header h2,
+			  const set<string> &depFiles)
 {
-   raptTagCount i, i1, i2;
-   
-   raptTagType type1, type2, type3;
-   raptTagCount count1, count2, count3;
-   char **dirnames = NULL, **basenames = NULL;
-   raptInt *dirindexes = NULL;
-   raptTagData dirnameval = NULL, basenameval = NULL, dirindexval = NULL;
-   char **dnames, **bnames;
-   raptInt *dindexes;
-   int res1, res2, res3;
-   
-#define FREE(a) if (a) free(a);
-   
-   res1 = headerGetEntry(header, RPMTAG_DIRNAMES, &type1, 
-			 &dirnameval, &count1);
-   res2 = headerGetEntry(header, RPMTAG_BASENAMES, &type2, 
-			 &basenameval, &count2);
-   res3 = headerGetEntry(header, RPMTAG_DIRINDEXES, &type3, 
-			 &dirindexval, &count3);
-   dirnames = (char **)dirnameval;
-   basenames = (char **)basenameval;
-   dirindexes = (raptInt *)dirindexval;
-   
-   if (res1 != 1 || res2 != 1 || res3 != 1) {
-      FREE(dirnames);
-      FREE(basenames);
+   raptTagType bnt, dnt, dit;
+   struct {
+      raptTagCount bnc, dnc, dic;
+      const char **bn, **dn;
+      raptInt *di;
+   }
+   l1 = {0}, l2 = {0};
+
+   int rc;
+   rc = headerGetEntry(h1, RPMTAG_BASENAMES, &bnt, (void**)&l1.bn, &l1.bnc);
+   if (rc != 1)
       return;
+   assert(bnt == RPM_STRING_ARRAY_TYPE);
+   assert(l1.bnc > 0);
+
+   rc = headerGetEntry(h1, RPMTAG_DIRNAMES, &dnt, (void**)&l1.dn, &l1.dnc);
+   assert(rc == 1);
+   assert(dnt == RPM_STRING_ARRAY_TYPE);
+
+   rc = headerGetEntry(h1, RPMTAG_DIRINDEXES, &dit, (void**)&l1.di, &l1.dic);
+   assert(rc == 1);
+   assert(dit == RPM_INT32_TYPE);
+   assert(l1.bnc == l1.dic);
+
+   for (int i = 0; i < l1.bnc; i++)
+   {
+      const char *d = l1.dn[l1.di[i]];
+      const char *b = l1.bn[i];
+
+      if (!usefulFile(d, b, depFiles))
+	 continue;
+
+      if (l2.bnc == 0) {
+         l2.bn = new const char *[l1.bnc];
+         l2.dn = new const char *[l1.dnc];
+         l2.di = new raptInt[l1.dic];
+      }
+
+      l2.bn[l2.bnc++] = b;
+
+      bool has_dir = false;
+      for (int j = 0; j < l2.dnc; j++) {
+         if (l2.dn[j] == d) {
+            l2.di[l2.dic++] = j;
+            has_dir = true;
+            break;
+         }
+      }
+      if (!has_dir) {
+         l2.dn[l2.dnc] = d;
+         l2.di[l2.dic++] = l2.dnc++;
+      }
    }
 
-   dnames = dirnames;
-   bnames = basenames;
-   dindexes = (raptInt*)malloc(sizeof(raptInt)*count3);
-   
-   i1 = 0;
-   i2 = 0;
-   for (i = 0; i < count2 ; i++) 
-   {
-      int ok = usefulFile(dirnames[dirindexes[i]], basenames[i]);
-      
-      if (!ok) {
-	 int k = i;
-	 while (dirindexes[i] == dirindexes[k] && i < count2)
-	     i++;
-	 i--;
-	 continue;
-      }
-      
-      
-      if (ok)
-      {
-	 raptTagCount j;
-	 
-	 bnames[i1] = basenames[i];
-	 for (j = 0; j < i2; j++)
-	 {
-	    if (dnames[j] == dirnames[dirindexes[i]])
-	    {
-	       dindexes[i1] = j;
-	       break;
-	    }
-	 }
-	 if (j == i2) 
-	 {
-	    dnames[i2] = dirnames[dirindexes[i]];
-	    dindexes[i1] = i2;
-	    i2++;
-	 }
-	 assert(i2 <= count1);
-	 i1++;
-      } 
+   assert(l2.bnc == l2.dic);
+
+   if (l2.bnc > 0) {
+      headerAddEntry(h2, RPMTAG_BASENAMES, bnt, l2.bn, l2.bnc);
+      headerAddEntry(h2, RPMTAG_DIRNAMES, dnt, l2.dn, l2.dnc);
+      headerAddEntry(h2, RPMTAG_DIRINDEXES, dit, l2.di, l2.dic);
+      delete[] l2.bn;
+      delete[] l2.dn;
+      delete[] l2.di;
    }
-   
-   if (i1 == 0) {
-      FREE(dirnames);
-      FREE(basenames);
-      FREE(dindexes);
-      return;
-   }
-   
-   headerAddEntry(newHeader, RPMTAG_DIRNAMES, type1, dnames, i2);
-   
-   headerAddEntry(newHeader, RPMTAG_BASENAMES, type2, bnames, i1);
-   
-   headerAddEntry(newHeader, RPMTAG_DIRINDEXES, type3, dindexes, i1);
-   
-   FREE(dirnames);
-   FREE(basenames);
-   FREE(dindexes);
+
+   headerFreeData(l1.bn, (rpmTagType)bnt);
+   headerFreeData(l1.dn, (rpmTagType)dnt);
+   headerFreeData(l1.di, (rpmTagType)dit);
 }
 
 
@@ -461,7 +450,7 @@ int main(int argc, char ** argv)
       Header newHeader = headerNew();
       copyTags(h, newHeader, numTags, tags);
       if (!fullFileList)
-	 copyStrippedFileList(h, newHeader);
+	 copyStrippedFileList(h, newHeader, depFiles);
       else {
 	 copyTag(h, newHeader, RPMTAG_BASENAMES);
 	 copyTag(h, newHeader, RPMTAG_DIRNAMES);
