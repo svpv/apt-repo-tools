@@ -17,6 +17,7 @@
 #include <map>
 #include <set>
 #include <iostream>
+#include <fstream>
 
 #include <apt-pkg/error.h>
 #include <apt-pkg/tagfile.h>
@@ -241,6 +242,7 @@ void usage()
    cerr << "options:" << endl;
    cerr << " --index <file>  file to write srpm index data to" << endl;
    cerr << " --info <file>   file to read update info from" << endl;
+   cerr << " --useful-files <file>  file to read the list of useful files from" << endl;
    cerr << " --meta <suffix> create package file list with given suffix" << endl;
    cerr << " --bloat         do not strip the package file list. Needed for some" << endl;
    cerr << "                 distributions that use non-automatically generated" << endl;
@@ -260,6 +262,7 @@ int main(int argc, char ** argv)
    char *op_dir;
    char *op_suf;
    char *op_index = NULL;
+   char *op_usefulFiles = NULL;
    char *op_update = NULL;
    int i;
    bool fullFileList = false;
@@ -284,6 +287,14 @@ int main(int argc, char ** argv)
 	 } else {
 	    cout << "genpkglist: filename missing for option --info"<<endl;
 	    exit(1);
+	 }
+      } else if (strcmp(argv[i], "--useful-files") == 0) {
+	 i++;
+	 if (i < argc) {
+	    op_usefulFiles = argv[i];
+	 } else {
+	    cout << "genpkglist: filename missing for option --useful-files"<<endl;
+	    return 1;
 	 }
       } else if (strcmp(argv[i], "--bloat") == 0) {
 	 fullFileList = true;
@@ -396,7 +407,17 @@ int main(int argc, char ** argv)
       return 1;
    }
 
-   set<string> depFiles;
+   set<string> usefulFiles;
+   if (op_usefulFiles) {
+      ifstream strm(op_usefulFiles);
+      if (!strm) {
+	 cout << "genpkglist: cannot open " << op_usefulFiles <<endl;
+	 return 1;
+      }
+      string line;
+      while (std::getline(strm, line))
+	 usefulFiles.insert(line);
+   }
 
    if (!fullFileList)
    // File list cannot be stripped in a dumb manner - this is going
@@ -420,10 +441,10 @@ int main(int argc, char ** argv)
 	 continue;
       }
 
-      findDepFiles(h, depFiles, RPMTAG_REQUIRENAME);
-      findDepFiles(h, depFiles, RPMTAG_PROVIDENAME);
-      findDepFiles(h, depFiles, RPMTAG_CONFLICTNAME);
-      findDepFiles(h, depFiles, RPMTAG_OBSOLETENAME);
+      findDepFiles(h, usefulFiles, RPMTAG_REQUIRENAME);
+      findDepFiles(h, usefulFiles, RPMTAG_PROVIDENAME);
+      findDepFiles(h, usefulFiles, RPMTAG_CONFLICTNAME);
+      findDepFiles(h, usefulFiles, RPMTAG_OBSOLETENAME);
    }
 
    CachedMD5 md5cache(string(op_dir) + string(op_suf), "genpkglist");
@@ -450,7 +471,7 @@ int main(int argc, char ** argv)
       Header newHeader = headerNew();
       copyTags(h, newHeader, numTags, tags);
       if (!fullFileList)
-	 copyStrippedFileList(h, newHeader, depFiles);
+	 copyStrippedFileList(h, newHeader, usefulFiles);
       else {
 	 copyTag(h, newHeader, RPMTAG_BASENAMES);
 	 copyTag(h, newHeader, RPMTAG_DIRNAMES);
