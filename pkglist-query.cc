@@ -6,7 +6,7 @@ int main(int argc, char *argv[])
 {
     const char *progname = argv[0];
     if (argc < 3) {
-	fprintf(stderr, "Usage: %s <format> <pkglist>...", progname);
+	fprintf(stderr, "Usage: %s <format> <pkglist>...\n", progname);
 	return 2;
     }
     const char *format = argv[1];
