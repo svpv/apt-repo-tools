@@ -1,4 +1,4 @@
-AC_INIT([apt-utils],[0.6.0],[at@altlinux.org])
+AC_INIT([apt-repo-tools],[0.6.0],[at@altlinux.org])
 AC_CONFIG_SRCDIR([genpkglist.cc])
 AM_INIT_AUTOMAKE([foreign])
 
