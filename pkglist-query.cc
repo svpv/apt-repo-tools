@@ -14,7 +14,7 @@ int main(int argc, char *argv[])
     const char *pkglist;
     int ix = 2;
     while ((pkglist = argv[ix++]) != NULL) {
-	FD_t Fd = Fopen(pkglist, "r");
+	FD_t Fd = Fopen(pkglist, "r.ufdio");
 	if (Ferror(Fd)) {
 	    fprintf(stderr, "%s: %s: %s\n", progname, pkglist, Fstrerror(Fd));
 	    rc = 1;
