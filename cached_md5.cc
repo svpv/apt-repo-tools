@@ -19,7 +19,6 @@
 #include <apt-pkg/tagfile.h>
 #include <apt-pkg/configuration.h>
 #include <apt-pkg/md5.h>
-#include "rpmhandler.h"
 
 #include <config.h>
 
