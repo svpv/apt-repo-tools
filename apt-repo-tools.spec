@@ -28,9 +28,14 @@ make
 
 %install
 make install DESTDIR=%buildroot
+mkdir -p %buildroot/var/cache/apt/genpkglist
+mkdir -p %buildroot/var/cache/apt/gensrclist
 
 %files
 /usr/bin/genpkglist
 /usr/bin/gensrclist
 /usr/bin/genbasedir
 /usr/bin/pkglist-query
+%defattr(2770,root,rpm,2770)
+%dir /var/cache/apt/genpkglist
+%dir /var/cache/apt/gensrclist
