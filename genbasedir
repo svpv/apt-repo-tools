@@ -34,6 +34,7 @@ defaultkey=
 topdir=
 create=
 verbose=
+cachedir=
 
 # bloat is necessary for non-Conectiva distros, at least RH,
 # because they use file dependencies with a non-predictable
@@ -118,6 +119,7 @@ Options:
    --architecture=ARCHITECTURE
                       Set "Architecture" field in component release file
    --notautomatic=true|false  Set "NotAutomatic" field in component release file
+   --cachedir=DIR     Use a custom md5sum cache directory for package list
 
    -h,--help          Show this help screen
 
@@ -142,7 +144,7 @@ phashstuff()
     echo " $md5 $size $2"
 }
 
-TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic: -- "$@"` || USAGE
+TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic:,cachedir: -- "$@"` || USAGE
 eval set -- "$TEMP"
 
 while :; do
@@ -206,6 +208,8 @@ while :; do
 		--architecture) shift; architecture="$1"; shift;
 			;;
 		--notautomatic) shift; notautomatic="$1"; shift;
+			;;
+		--cachedir) shift; cachedir="$1"; shift;
 			;;
 		--) shift; break
 			;;
@@ -345,9 +349,11 @@ if [ -z "$hashonly" ]; then
 		# Save older pkglist
 		save_file "$newlist"
 
+		[ -z "$cachedir" ] || [ -d "$cachedir/genpkglist" ] || mkdir "$cachedir/genpkglist"
 		(cd "$basedir" &&
 			"$GENPKGLIST" $progress $bloat --index "$SRCIDX_COMP" \
 				${updateinfo:+--info "$updateinfo"} \
+				${cachedir:+--cachedir "$cachedir"} \
 				"$topdir/$distro" "$comp")
 
 		if [ $? -ne 0 ]; then
@@ -385,8 +391,10 @@ if [ -z "$hashonly" ]; then
 		# Save older srclist
 		save_file "$newlist"
 
+		[ -z "$cachedir" ] || [ -d "$cachedir/gensrclist" ] || mkdir "$cachedir/gensrclist"
 		(cd "$basedir" &&
 			"$GENSRCLIST" $progress $flat $mapi \
+				${cachedir:+--cachedir "$cachedir"} \
 				"$srctopdir" "$comp" "$SRCIDX_COMP")
 
 		if [ $? -ne 0 ]; then
