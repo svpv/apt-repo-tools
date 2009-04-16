@@ -345,11 +345,10 @@ if [ -z "$hashonly" ]; then
 		# Save older pkglist
 		save_file "$newlist"
 
-		if [ -z "$updateinfo" ]; then
-			(cd "$basedir"; "$GENPKGLIST" $progress $bloat --index "$SRCIDX_COMP" "$topdir/$distro" "$comp")
-		else
-			(cd "$basedir"; "$GENPKGLIST" $progress $bloat --index "$SRCIDX_COMP" --info "$updateinfo" "$topdir/$distro" "$comp")
-		fi
+		(cd "$basedir" &&
+			"$GENPKGLIST" $progress $bloat --index "$SRCIDX_COMP" \
+				${updateinfo:+--info "$updateinfo"} \
+				"$topdir/$distro" "$comp")
 
 		if [ $? -ne 0 ]; then
 			echo
@@ -386,14 +385,9 @@ if [ -z "$hashonly" ]; then
 		# Save older srclist
 		save_file "$newlist"
 
-		if [ -z "$mapi" ]; then
-			# the default case: all .src.rpm in SRPMS.$comp get listed
-			(cd "$basedir"; "$GENSRCLIST" $progress $flat "$srctopdir" "$comp" "$SRCIDX")
-		else
-			# the special case: only those .src.rpm in SRPMS.$comp get listed
-			# which produce some binaries in RPMS.$comp
-			(cd "$basedir"; "$GENSRCLIST" $progress $flat $mapi "$srctopdir" "$comp" "$SRCIDX_COMP")
-		fi
+		(cd "$basedir" &&
+			"$GENSRCLIST" $progress $flat $mapi \
+				"$srctopdir" "$comp" "$SRCIDX_COMP")
 
 		if [ $? -ne 0 ]; then
 			echo
