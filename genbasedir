@@ -35,6 +35,7 @@ topdir=
 create=
 verbose=
 cachedir=
+useful_files=
 
 # bloat is necessary for non-Conectiva distros, at least RH,
 # because they use file dependencies with a non-predictable
@@ -102,6 +103,9 @@ Options:
    --bloat            Do not strip the package file list. Needed for some
                       distributions that use non-automatically generated
                       file dependencies
+   --useful-files=FILE
+                      Read the list of useful files from FILE.
+                      Do not strip these files from the package file list.
    --create           Create base directory if needed
 
    --origin=ORIGIN    Set "Origin" field in global release file
@@ -144,7 +148,7 @@ phashstuff()
     echo " $md5 $size $2"
 }
 
-TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic:,cachedir: -- "$@"` || USAGE
+TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic:,cachedir:,useful-files: -- "$@"` || USAGE
 eval set -- "$TEMP"
 
 while :; do
@@ -210,6 +214,8 @@ while :; do
 		--notautomatic) shift; notautomatic="$1"; shift;
 			;;
 		--cachedir) shift; cachedir="$1"; shift;
+			;;
+		--useful-files) shift; useful_files="$1"; shift;
 			;;
 		--) shift; break
 			;;
@@ -354,6 +360,7 @@ if [ -z "$hashonly" ]; then
 			"$GENPKGLIST" $progress $bloat --index "$SRCIDX_COMP" \
 				${updateinfo:+--info "$updateinfo"} \
 				${cachedir:+--cachedir "$cachedir"} \
+				${useful_files:+--useful-files "$useful_files"} \
 				"$topdir/$distro" "$comp")
 
 		if [ $? -ne 0 ]; then
