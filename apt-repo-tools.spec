@@ -1,6 +1,6 @@
 Name: apt-repo-tools
 Version: 0.6.0
-Release: alt0
+Release: alt1
 
 Summary: Utilities to create APT repositories
 License: GPL
@@ -39,3 +39,15 @@ mkdir -p %buildroot/var/cache/apt/gensrclist
 %defattr(2770,root,rpm,2770)
 %dir /var/cache/apt/genpkglist
 %dir /var/cache/apt/gensrclist
+
+%changelog
+* Wed Apr 22 2009 Alexey Tourbin <at@altlinux.ru> 0.6.0-alt1
+- this package provides and obsoletes apt-utils
+- genpkglist: reimplemented support for file-level dependencies
+- genpkglist: removed /etc/ from usefulFile patterns
+- genpkglist: file dups are now stripped as well
+- genpkglist: added --useful-files=FILE option
+- genpkglist: added --no-scan option
+- genbasedir: pass --no-scan and --useful-files=FILE to genpkglist
+- genbasedir: pass --cache-dir=DIR to genpkglist and gensrclist
+- pkglist-query: new program, obsoletes countpkglist
