@@ -22,14 +22,12 @@
 #include <apt-pkg/error.h>
 #include <apt-pkg/tagfile.h>
 #include <apt-pkg/configuration.h>
-#include <apt-pkg/rpmhandler.h>
 #include <config.h>
 
 #include "rapt-compat.h"
+#include "crpmtag.h"
 #include "cached_md5.h"
 #include "genutil.h"
-
-#define CRPMTAG_TIMESTAMP   1012345
 
 raptTag tags[] =  {
        RPMTAG_NAME, 
