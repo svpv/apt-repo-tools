@@ -245,6 +245,7 @@ void usage()
    cerr << " --info <file>   file to read update info from" << endl;
    cerr << " --useful-files <file>  file to read the list of useful files from" << endl;
    cerr << " --meta <suffix> create package file list with given suffix" << endl;
+   cerr << " --no-scan       do not scan for useful files" << endl;
    cerr << " --bloat         do not strip the package file list. Needed for some" << endl;
    cerr << "                 distributions that use non-automatically generated" << endl;
    cerr << "                 file dependencies" << endl;
@@ -267,6 +268,7 @@ int main(int argc, char ** argv)
    char *op_update = NULL;
    int i;
    bool fullFileList = false;
+   bool noScan = false;
    bool progressBar = false;
    const char *pkgListSuffix = NULL;
    bool pkgListAppend = false;
@@ -299,6 +301,8 @@ int main(int argc, char ** argv)
 	 }
       } else if (strcmp(argv[i], "--bloat") == 0) {
 	 fullFileList = true;
+      } else if (strcmp(argv[i], "--no-scan") == 0) {
+	 noScan = true;
       } else if (strcmp(argv[i], "--progress") == 0) {
 	 progressBar = true;
       } else if (strcmp(argv[i], "--append") == 0) {
@@ -420,7 +424,7 @@ int main(int argc, char ** argv)
 	 usefulFiles.insert(line);
    }
 
-   if (!fullFileList)
+   if (!(fullFileList || noScan))
    // File list cannot be stripped in a dumb manner - this is going
    // unmet dependencies.  First pass is required to find depFiles.
    for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {

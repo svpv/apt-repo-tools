@@ -41,7 +41,8 @@ useful_files=
 # because they use file dependencies with a non-predictable
 # heuristic. So we can't strip-off paths that will probably
 # never appear in dependencies.
-bloat=""
+bloat=
+noscan=
 
 # Global release file sections
 origin="Unknown"
@@ -100,6 +101,7 @@ Options:
                       some binaries
    --flat             Use flat repository, where SRPMS and RPMS are in
                       the topdir (SRPMS are usually in 'topdir/..')
+   --no-scan          Do not scan for useful files.
    --bloat            Do not strip the package file list. Needed for some
                       distributions that use non-automatically generated
                       file dependencies
@@ -148,7 +150,7 @@ phashstuff()
     echo " $md5 $size $2"
 }
 
-TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic:,cachedir:,useful-files: -- "$@"` || USAGE
+TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,no-scan,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic:,cachedir:,useful-files: -- "$@"` || USAGE
 eval set -- "$TEMP"
 
 while :; do
@@ -162,6 +164,8 @@ while :; do
 		-s|--sign) shift; signature=1
 			;;
 		--bloat) shift; bloat="--bloat"
+			;;
+		--no-scan) shift; noscan="--no-scan"
 			;;
 		--mapi) shift; mapi="--mapi"
 			;;
@@ -357,7 +361,7 @@ if [ -z "$hashonly" ]; then
 
 		[ -z "$cachedir" ] || [ -d "$cachedir/genpkglist" ] || mkdir "$cachedir/genpkglist"
 		(cd "$basedir" &&
-			"$GENPKGLIST" $progress $bloat --index "$SRCIDX_COMP" \
+			"$GENPKGLIST" $progress $bloat $noscan --index "$SRCIDX_COMP" \
 				${updateinfo:+--info "$updateinfo"} \
 				${cachedir:+--cachedir "$cachedir"} \
 				${useful_files:+--useful-files "$useful_files"} \
