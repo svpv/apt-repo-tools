@@ -73,6 +73,10 @@ bool usefulFile(const char *d, const char *b,
    // PATH-like directories
    if (endswith(d, "/bin/") || endswith(d, "/sbin/"))
       return true;
+   if (strcmp(d, "/usr/games/") == 0)
+      return true;
+   if (strcmp(d, "/usr/lib/kde4bin/") == 0)
+      return true;
 
    // shared libraries
    if (strncmp(b, "lib", 3) == 0 && strstr(b + 3, ".so"))
