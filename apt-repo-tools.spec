@@ -1,5 +1,5 @@
 Name: apt-repo-tools
-Version: 0.6.0
+Version: 0.6.0.1
 Release: alt1
 
 Summary: Utilities to create APT repositories
@@ -41,6 +41,9 @@ mkdir -p %buildroot/var/cache/apt/gensrclist
 %dir /var/cache/apt/gensrclist
 
 %changelog
+* Thu Jul 09 2009 Alexey Tourbin <at@altlinux.ru> 0.6.0.1-alt1
+- genpkglist: added /usr/games and /usr/lib/kde4bin directories
+
 * Wed Apr 22 2009 Alexey Tourbin <at@altlinux.ru> 0.6.0-alt1
 - this package provides and obsoletes apt-utils
 - genpkglist: reimplemented support for file-level dependencies
