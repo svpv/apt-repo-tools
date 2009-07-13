@@ -377,7 +377,7 @@ if [ -z "$hashonly" ]; then
 
 		if [ -f "$newlist" ]; then
 			rm -f "$newlist.bz2"
-			bzip2 -9k "$newlist"
+			bzip2 -k "$newlist"
 		fi
 
 		cat "$SRCIDX_COMP" >> "$SRCIDX"
@@ -418,7 +418,7 @@ if [ -z "$hashonly" ]; then
 
 		if [ -f "$newlist" ]; then
 			rm -f "$newlist.bz2"
-			bzip2 -9k "$newlist"
+			bzip2 -k "$newlist"
 		fi
 
 	done
