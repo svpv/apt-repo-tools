@@ -1,5 +1,5 @@
 Name: apt-repo-tools
-Version: 0.6.0.1
+Version: 0.6.0.2
 Release: alt1
 
 Summary: Utilities to create APT repositories
@@ -41,6 +41,9 @@ mkdir -p %buildroot/var/cache/apt/gensrclist
 %dir /var/cache/apt/gensrclist
 
 %changelog
+* Tue Jul 14 2009 Alexey Tourbin <at@altlinux.ru> 0.6.0.2-alt1
+- genbasedir: replaced 'bzip2 -9' with 'bzip2', to make BZIP2=--fast work
+
 * Thu Jul 09 2009 Alexey Tourbin <at@altlinux.ru> 0.6.0.1-alt1
 - genpkglist: added /usr/games and /usr/lib/kde4bin directories
 
