@@ -452,6 +452,8 @@ int main(int argc, char ** argv)
       findDepFiles(h, usefulFiles, RPMTAG_PROVIDENAME);
       findDepFiles(h, usefulFiles, RPMTAG_CONFLICTNAME);
       findDepFiles(h, usefulFiles, RPMTAG_OBSOLETENAME);
+
+      headerFree(h);
    }
 
    CachedMD5 md5cache(string(op_dir) + string(op_suf), "genpkglist");
