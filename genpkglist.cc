@@ -257,6 +257,23 @@ void usage()
 }
 
 
+struct rec {
+   const char *rpm;
+   const char *srpm;
+};
+
+static
+int recCmp(const void *rec1_, const void *rec2_)
+{
+   const struct rec *rec1 = (const struct rec *) rec1_;
+   const struct rec *rec2 = (const struct rec *) rec2_;
+   int cmp = strcmp(rec1->srpm, rec2->srpm);
+   if (cmp)
+      return cmp;
+   return strcmp(rec1->rpm, rec2->rpm);
+}
+
+
 int main(int argc, char ** argv) 
 {
    string rpmsdir;
@@ -383,19 +400,13 @@ int main(int argc, char ** argv)
 
    string dirtag = "RPMS." + string(op_suf);
 
-   entry_no = scandir(rpmsdir.c_str(), &dirEntries, selectRPMs, alphasort);
-   if (entry_no < 0) {
-      cerr << "genpkglist: error opening directory " << rpmsdir << ": "
-	  << strerror(errno) << endl;
-      return 1;
-   }
-   
-   if (chdir(rpmsdir.c_str()) != 0)
+   if (chdir(rpmsdir.c_str()) != 0 ||
+	 (entry_no = scandir(".", &dirEntries, selectRPMs, alphasort)) < 0)
    {
-      cerr << argv[0] << ": " << strerror(errno) << endl;
+      cerr << "genpkglist: " << rpmsdir << ": " << strerror(errno) << endl;
       return 1;
    }
-   
+
    if (pkgListSuffix != NULL)
 	   pkglist_path = pkglist_path + "/base/pkglist." + pkgListSuffix;
    else
@@ -426,54 +437,72 @@ int main(int argc, char ** argv)
 	 usefulFiles.insert(line);
    }
 
-   if (!(fullFileList || noScan))
-   // File list cannot be stripped in a dumb manner - this is going
-   // unmet dependencies.  First pass is required to find depFiles.
+   struct rec *recs = NULL;
+   int nrec = 0;
+
+   if (entry_no > 0)
+      recs = new struct rec[entry_no];
+
    for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
 
       if (progressBar)
 	 simpleProgress(entry_cur + 1, entry_no);
 
-      const char *fname = dirEntries[entry_cur]->d_name;
+      const char *rpm = dirEntries[entry_cur]->d_name;
 
-      struct stat sb;
-      if (stat(fname, &sb) < 0) {
-	 cerr << "Warning: " << fname << ": " << strerror(errno) << endl;
-	 continue;
-      }
-
-      Header h = readHeader(fname);
+      Header h = readHeader(rpm);
       if (h == NULL) {
-	 cerr << "Warning: " << fname << ": cannot read package header" << endl;
+	 cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
 	 continue;
       }
 
-      findDepFiles(h, usefulFiles, RPMTAG_REQUIRENAME);
-      findDepFiles(h, usefulFiles, RPMTAG_PROVIDENAME);
-      findDepFiles(h, usefulFiles, RPMTAG_CONFLICTNAME);
-      findDepFiles(h, usefulFiles, RPMTAG_OBSOLETENAME);
+      const char *srpm = getStringTag(h, RPMTAG_SOURCERPM);
+      if (srpm == NULL) {
+	 cerr << "genpkglist: " << rpm << ": invalid binary package" << endl;
+	 headerFree(h);
+	 continue;
+      }
+      srpm = strdup(srpm);
+      if (srpm == NULL) {
+	 cerr << "genpkglist: " << strerror(errno) << endl;
+	 return 1;
+      }
+
+      recs[nrec].rpm = rpm;
+      recs[nrec].srpm = srpm;
+      nrec++;
+
+      if (!(fullFileList || noScan)) {
+	 findDepFiles(h, usefulFiles, RPMTAG_REQUIRENAME);
+	 findDepFiles(h, usefulFiles, RPMTAG_PROVIDENAME);
+	 findDepFiles(h, usefulFiles, RPMTAG_CONFLICTNAME);
+	 findDepFiles(h, usefulFiles, RPMTAG_OBSOLETENAME);
+      }
 
       headerFree(h);
    }
 
+   if (nrec > 1)
+      qsort(recs, nrec, sizeof(recs[0]), recCmp);
+
    CachedMD5 md5cache(string(op_dir) + string(op_suf), "genpkglist");
 
-   for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
+   for (int reci = 0; reci < nrec; reci++) {
 
       if (progressBar)
-	 simpleProgress(entry_cur + 1, entry_no);
+	 simpleProgress(reci + 1, nrec);
 
-      const char *fname = dirEntries[entry_cur]->d_name;
+      const char *rpm = recs[reci].rpm;
 
       struct stat sb;
-      if (stat(fname, &sb) < 0) {
-	 cerr << "Warning: " << fname << ": " << strerror(errno) << endl;
+      if (stat(rpm, &sb) < 0) {
+	 cerr << "genpkglist: " << rpm << ": " << strerror(errno) << endl;
 	 continue;
       }
 
-      Header h = readHeader(fname);
+      Header h = readHeader(rpm);
       if (h == NULL) {
-	 cerr << "Warning: " << fname << ": cannot read package header" << endl;
+	 cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
 	 continue;
       }
 
@@ -486,12 +515,12 @@ int main(int argc, char ** argv)
 	 copyTag(h, newHeader, RPMTAG_DIRNAMES);
 	 copyTag(h, newHeader, RPMTAG_DIRINDEXES);
       }
-      addAptTags(newHeader, dirtag.c_str(), fname, sb.st_size);
+      addAptTags(newHeader, dirtag.c_str(), rpm, sb.st_size);
       if (op_update)
-	 addInfoTags(newHeader, fname, updateInfo);
+	 addInfoTags(newHeader, rpm, updateInfo);
 
       char md5[34];
-      md5cache.MD5ForFile(fname, sb.st_mtime, md5);
+      md5cache.MD5ForFile(rpm, sb.st_mtime, md5);
       addStringTag(newHeader, CRPMTAG_MD5, md5);
 
       if (idxfp) {
