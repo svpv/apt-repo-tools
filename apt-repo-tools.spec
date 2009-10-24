@@ -1,5 +1,5 @@
 Name: apt-repo-tools
-Version: 0.6.0.3
+Version: 0.6.0.4
 Release: alt1
 
 Summary: Utilities to create APT repositories
@@ -41,6 +41,9 @@ mkdir -p %buildroot/var/cache/apt/gensrclist
 %dir /var/cache/apt/gensrclist
 
 %changelog
+* Sun Oct 25 2009 Alexey Tourbin <at@altlinux.ru> 0.6.0.4-alt1
+- genpkglist.cc: group binary packages by src.rpm
+
 * Sun Sep 27 2009 Alexey Tourbin <at@altlinux.ru> 0.6.0.3-alt1
 - genpkglist.cc: fixed first-pass memory leak
 
