@@ -65,6 +65,39 @@ raptTag tags[] =  {
 int numTags = sizeof(tags) / sizeof(tags[0]);
 
 
+static
+void copyChangelog(Header h1, Header h2, long since)
+{
+   int_32 timet, namet, textt;
+   int_32 *time = NULL;
+   const char **name = NULL, **text = NULL;
+   int_32 n = 0; // in
+   int_32 m = 0; // out
+   int i;
+   int rc = headerGetEntry(h1, RPMTAG_CHANGELOGTIME, &timet, (void**)&time, &n)
+         && headerGetEntry(h1, RPMTAG_CHANGELOGNAME, &namet, (void**)&name, NULL)
+         && headerGetEntry(h1, RPMTAG_CHANGELOGTEXT, &textt, (void**)&text, NULL);
+   if (!rc || n < 1)
+      goto exit;
+
+   for (i = 0; i < n; i++)
+      if (time[i] >= since)
+	 m++;
+      else
+	 break;
+   if (m < n)
+      m++;
+
+   headerAddEntry(h2, RPMTAG_CHANGELOGTIME, timet, time, m);
+   headerAddEntry(h2, RPMTAG_CHANGELOGNAME, namet, name, m);
+   headerAddEntry(h2, RPMTAG_CHANGELOGTEXT, textt, text, m);
+
+exit:
+   headerFreeData(time, (rpmTagType)timet);
+   headerFreeData(name, (rpmTagType)namet);
+   headerFreeData(text, (rpmTagType)textt);
+}
+
 
 static
 bool usefulFile(const char *d, const char *b,
@@ -254,6 +287,10 @@ void usage()
    cerr << " --append        append to the package file list, don't overwrite" << endl;
    cerr << " --progress      show a progress bar" << endl;
    cerr << " --cachedir=DIR  use a custom directory for package md5sum cache"<<endl;
+   cerr << " --changelog-since <seconds>" <<endl;
+   cerr << "                 save package changelogs; copy changelog entries" <<endl;
+   cerr << "                 newer than seconds since the Epoch, and also" <<endl;
+   cerr << "                 one preceding entry (if any)" <<endl;
 }
 
 
@@ -286,6 +323,7 @@ int main(int argc, char ** argv)
    char *op_usefulFiles = NULL;
    char *op_update = NULL;
    int i;
+   long /* time_t */ changelog_since = 0;
    bool fullFileList = false;
    bool noScan = false;
    bool progressBar = false;
@@ -317,6 +355,14 @@ int main(int argc, char ** argv)
 	 } else {
 	    cout << "genpkglist: filename missing for option --useful-files"<<endl;
 	    return 1;
+	 }
+      } else if (strcmp(argv[i], "--changelog-since") == 0) {
+	 i++;
+	 if (i < argc) {
+	    changelog_since = atol(argv[i]);
+	 } else {
+	    cout << "genpkglist: argument missing for option --changelog-since" <<endl;
+	    exit(1);
 	 }
       } else if (strcmp(argv[i], "--bloat") == 0) {
 	 fullFileList = true;
@@ -515,6 +561,9 @@ int main(int argc, char ** argv)
 	 copyTag(h, newHeader, RPMTAG_DIRNAMES);
 	 copyTag(h, newHeader, RPMTAG_DIRINDEXES);
       }
+      if (changelog_since > 0)
+	 copyChangelog(h, newHeader, changelog_since);
+
       addAptTags(newHeader, dirtag.c_str(), rpm, sb.st_size);
       if (op_update)
 	 addInfoTags(newHeader, rpm, updateInfo);
