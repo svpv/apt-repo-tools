@@ -1,5 +1,5 @@
 Name: apt-repo-tools
-Version: 0.6.0.4
+Version: 0.6.0.5
 Release: alt1
 
 Summary: Utilities to create APT repositories
@@ -41,6 +41,10 @@ mkdir -p %buildroot/var/cache/apt/gensrclist
 %dir /var/cache/apt/gensrclist
 
 %changelog
+* Sun Oct 25 2009 Alexey Tourbin <at@altlinux.ru> 0.6.0.5-alt1
+- genpkglist.cc: implemented "--changelog-since seconds" option
+- genbasedir: implemented --changelog-since=DATE option
+
 * Sun Oct 25 2009 Alexey Tourbin <at@altlinux.ru> 0.6.0.4-alt1
 - genpkglist.cc: group binary packages by src.rpm
 
