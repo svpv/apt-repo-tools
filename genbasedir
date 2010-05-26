@@ -64,6 +64,9 @@ changelog_since=
 GENPKGLIST=genpkglist
 GENSRCLIST=gensrclist
 
+make_bz2=1
+make_xz=1
+
 Fatal()
 {
 	echo "${0##*/}: $*" >&2
@@ -141,20 +144,15 @@ EOF
 	[ -n "$1" ] && exit "$1" || exit
 }
 
-getsize()
-{
-    tmp=`wc -c $1`
-    echo $tmp|cut -f1 -d\  
-}
-
 phashstuff()
 {
-    size=`getsize "$1"`
+    size=`wc -c <"$1"`
     md5=`md5sum "$1"|cut -f1 -d\  `
     echo " $md5 $size $2"
 }
 
-TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,no-scan,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic:,cachedir:,useful-files:,changelog-since: -- "$@"` || USAGE
+TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,no-scan,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic:,cachedir:,useful-files:,changelog-since: \
+	-l bz2,no-bz2,xz,no-xz -- "$@"` || USAGE
 eval set -- "$TEMP"
 
 while :; do
@@ -230,6 +228,10 @@ while :; do
 			;;
 		--useful-files) shift; useful_files="$1"; shift;
 			;;
+		--bz2) shift; make_bz2=1 ;;
+		--no-bz2) shift; make_bz2= ;;
+		--xz) shift; make_xz=1 ;;
+		--no-xz) shift; make_xz= ;;
 		--) shift; break
 			;;
 		*) echo "$PROG: unrecognized option: $1" >&2; exit 1
@@ -385,9 +387,14 @@ if [ -z "$hashonly" ]; then
 		# Compare with older pkglist.
 		compare_file
 
-		if [ -f "$newlist" ]; then
+		if [ -f "$newlist" ] && [ -n "$make_bz2" ]; then
 			rm -f "$newlist.bz2"
 			bzip2 -k "$newlist"
+		fi
+
+		if [ -f "$newlist" ] && [ -n "$make_xz" ]; then
+			rm -f "$newlist.xz"
+			xz -k "$newlist"
 		fi
 
 		cat "$SRCIDX_COMP" >> "$SRCIDX"
@@ -426,9 +433,14 @@ if [ -z "$hashonly" ]; then
 		# Compare with older srclist.
 		compare_file
 
-		if [ -f "$newlist" ]; then
+		if [ -f "$newlist" ] && [ -n "$make_bz2" ]; then
 			rm -f "$newlist.bz2"
 			bzip2 -k "$newlist"
+		fi
+
+		if [ -f "$newlist" ] && [ -n "$make_xz" ]; then
+			rm -f "$newlist.xz"
+			xz -k "$newlist"
 		fi
 
 	done
@@ -477,6 +489,9 @@ if [ -n "$newhashfile" -a -z "$listonly" ]; then
 				sed -e "\#^ .* $pkglist_.$comp\(.bz2\)\?\$#d" \
 				    -e "\#^ .* $srclist_.$comp\(.bz2\)\?\$#d" \
 				    -e "\#^ .* $release_.$comp\(.bz2\)\?\$#d" \
+				    -e "\#^ .* $pkglist_.$comp\(.xz\)\?\$#d" \
+				    -e "\#^ .* $srclist_.$comp\(.xz\)\?\$#d" \
+				    -e "\#^ .* $release_.$comp\(.xz\)\?\$#d" \
 				    -e "s/^\(Components:.*\) $comp\(.*\)\$/\1\2/" \
 					"$release.pre" > "$release.tmp"
 				mv -f "$release.tmp" "$release.pre"
@@ -507,6 +522,8 @@ if [ -n "$newhashfile" -a -z "$listonly" ]; then
 		phash "$srclist.$comp" "$srclist_.$comp" "$release"
 		phash "$pkglist.$comp.bz2" "$pkglist_.$comp.bz2" "$release"
 		phash "$srclist.$comp.bz2" "$srclist_.$comp.bz2" "$release"
+		phash "$pkglist.$comp.xz" "$pkglist_.$comp.xz" "$release"
+		phash "$srclist.$comp.xz" "$srclist_.$comp.xz" "$release"
 		phash "$release.$comp" "$release_.$comp" "$release"
 	done
 	Verbose ' done'
@@ -546,6 +563,8 @@ if [ -n "$oldhashfile" -a -z "$listonly" ]; then
 		phash "$srclist.$comp" "$oldsrclist_.$comp" "$hf"
 		phash "$pkglist.$comp.bz2" "$oldpkglist_.$comp.bz2" "$hf"
 		phash "$srclist.$comp.bz2" "$oldsrclist_.$comp.bz2" "$hf"
+		phash "$pkglist.$comp.xz" "$oldpkglist_.$comp.xz" "$hf"
+		phash "$srclist.$comp.xz" "$oldsrclist_.$comp.xz" "$hf"
 		phash "$release.$comp" "$oldrelease_.$comp" "$hf"
 	done
 	Verbose ' done'
