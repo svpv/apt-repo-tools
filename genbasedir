@@ -37,6 +37,9 @@ verbose=
 cachedir=
 useful_files=
 
+maybe_unchanged=
+unchanged=1
+
 # bloat is necessary for non-Conectiva distros, at least RH,
 # because they use file dependencies with a non-predictable
 # heuristic. So we can't strip-off paths that will probably
@@ -133,6 +136,7 @@ Options:
    --cachedir=DIR     Use a custom md5sum cache directory for package list
    --changelog-since=DATE     Save package changelogs; copy changelog entries
                               newer than DATE, and also one preceding entry
+   --maybe-unchanged  Skip the update if pkglist is unchanged.
 
    -h,--help          Show this help screen
 
@@ -152,7 +156,7 @@ phashstuff()
 }
 
 TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,no-scan,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic:,cachedir:,useful-files:,changelog-since: \
-	-l bz2,no-bz2,xz,no-xz -- "$@"` || USAGE
+	-l bz2,no-bz2,xz,no-xz,maybe-unchanged -- "$@"` || USAGE
 eval set -- "$TEMP"
 
 while :; do
@@ -232,6 +236,7 @@ while :; do
 		--no-bz2) shift; make_bz2= ;;
 		--xz) shift; make_xz=1 ;;
 		--no-xz) shift; make_xz= ;;
+		--maybe-unchanged) shift; maybe_unchanged=1 ;;
 		--) shift; break
 			;;
 		*) echo "$PROG: unrecognized option: $1" >&2; exit 1
@@ -384,6 +389,17 @@ if [ -z "$hashonly" ]; then
 			Fatal 'Error executing genpkglist.'
 		fi
 
+		if [ -n "$maybe_unchanged" ]; then
+			hash=$(phashstuff "$newlist" "$pkglist_.$comp")
+			if LC_ALL=C fgrep -qs -x "$hash" "$release"; then
+				Verbose "$newlist is unchanged"
+				compare_file
+				[ -n "$saved_list" ] || rm -f "$newlist"
+				continue
+			fi
+			unchanged=
+		fi
+
 		# Compare with older pkglist.
 		compare_file
 
@@ -449,6 +465,11 @@ if [ -z "$hashonly" ]; then
 	Verbose -n 'Waiting for bzip2 and xz to finish... '
 	wait
 	Verbose 'done'
+fi
+
+if [ -n "$maybe_unchanged" ] && [ -n "$unchanged" ]; then
+	Verbose "$release is unchanged"
+	exit 0
 fi
 
 phash()
