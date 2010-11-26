@@ -110,6 +110,10 @@ bool usefulFile(const char *d, const char *b,
       return true;
    if (strcmp(d, "/usr/lib/kde4bin/") == 0)
       return true;
+   // Java jars
+   if (strncmp(d, "/usr/share/java/", sizeof("/usr/share/java/") - 1) == 0
+       && endswith(b, ".jar"))
+      return true;
 
    // shared libraries
    if (strncmp(b, "lib", 3) == 0 && strstr(b + 3, ".so"))
