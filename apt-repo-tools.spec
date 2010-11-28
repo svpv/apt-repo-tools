@@ -15,21 +15,20 @@ BuildRequires: gcc-c++ libapt-devel librpm-devel
 
 %description
 This package contains the utility programs that can prepare a repository
-of RPMS binary and source packages for future access by APT (by generating
-the indices): genbasedir, genpkglist, gensrclist.
+of RPMS binary and source packages for future access by APT (by
+generating the indices): genbasedir, genpkglist, gensrclist.
 
 %prep
-%setup -q
+%setup
 
 %build
-autoreconf -i
+%autoreconf
 %configure
-make
+%make_build
 
 %install
-make install DESTDIR=%buildroot
-mkdir -p %buildroot/var/cache/apt/genpkglist
-mkdir -p %buildroot/var/cache/apt/gensrclist
+%makeinstall_std
+mkdir -p %buildroot/var/cache/apt/gen{pkg,src}list
 
 %files
 /usr/bin/genpkglist
