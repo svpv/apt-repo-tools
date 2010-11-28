@@ -1,5 +1,5 @@
 Name: apt-repo-tools
-Version: 0.6.0.7
+Version: 0.6.0.8
 Release: alt1
 
 Summary: Utilities to create APT repositories
@@ -40,6 +40,9 @@ mkdir -p %buildroot/var/cache/apt/gen{pkg,src}list
 %dir /var/cache/apt/gensrclist
 
 %changelog
+* Sun Nov 28 2010 Dmitry V. Levin <ldv@altlinux.org> 0.6.0.8-alt1
+- genpkglist: add java jars to useful files (viy@; closes: #24649).
+
 * Tue Aug 17 2010 Alexey Tourbin <at@altlinux.ru> 0.6.0.7-alt1
 - genbasedir: implemented --maybe-unchanged option, for use in girar-builder
 
