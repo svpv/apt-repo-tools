@@ -354,7 +354,7 @@ compare_file()
 
 compress_file()
 {
-	local filesize halfsize pid1 pid2 pxz=
+	local filesize halfsize pid pxz=
 
 	rm -f "$1.xz" "$1.yz"
 	if [ -n "$make_xz" ]; then
@@ -367,9 +367,9 @@ compress_file()
 		fi
 		if [ -n "$pxz" ]; then
 			halfsize=$(($filesize/2))
-			dd if="$1" bs="$halfsize" count=1 2>/dev/null |xz >"$1.xz" & pid1=$!
-			dd if="$1" bs="$halfsize" skip=1  2>/dev/null |xz >"$1.yz" & pid2=$!
-			wait $pid1 $pid2
+			dd if="$1" bs="$halfsize" count=1 2>/dev/null |xz >"$1.xz" & pid=$!
+			dd if="$1" bs="$halfsize"  skip=1 2>/dev/null |xz >"$1.yz"
+			wait "$pid"
 			cat "$1.yz" >>"$1.xz"
 			rm -f "$1.yz"
 		else
