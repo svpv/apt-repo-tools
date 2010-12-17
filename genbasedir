@@ -409,9 +409,22 @@ if [ -z "$hashonly" ]; then
 		fi
 
 		if [ -f "$newlist" ] && [ -n "$make_xz" ]; then
-			rm -f "$newlist.xz"
-			xz -k "$newlist" &
-		fi
+			rm -f "$newlist.xz" "$newlist.yz"
+			filesize=$(stat -c '%s' "$newlist")
+			if [ "$filesize" -ge $((4*8*1024*1024)) ]; then
+				# The file is large enough (as compared to typical dictionary size).
+				# Note that .xz files can be concatenated, so it's nice to have
+				# 2-way parallel compression here.
+				halfsize=$(($filesize/2))
+				dd if="$newlist" bs="$halfsize" count=1 2>/dev/null |xz >"$newlist.xz" & pid1=$!
+				dd if="$newlist" bs="$halfsize" skip=1  2>/dev/null |xz >"$newlist.yz" & pid2=$!
+				wait $pid1 $pid2
+				cat "$newlist.yz" >>"$newlist.xz"
+				rm -f "$newlist.yz"
+			else
+				xz -k "$newlist"
+			fi
+		fi &
 
 		cat "$SRCIDX_COMP" >> "$SRCIDX"
 
