@@ -298,7 +298,7 @@ if [ ! -d "$basedir" ]; then
 		if ! mkdir -p "$basedir" >/dev/null 2>&1; then
 			Fatal 'Unable to create base directory'
 		fi
-		Verbose done
+		Verbose 'done'
 	else
 		Fatal 'Base directory does not exist!'
 	fi
