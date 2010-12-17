@@ -1,5 +1,5 @@
 Name: apt-repo-tools
-Version: 0.6.0.9
+Version: 0.6.0.10
 Release: alt1
 
 Summary: Utilities to create APT repositories
@@ -40,6 +40,9 @@ mkdir -p %buildroot/var/cache/apt/gen{pkg,src}list
 %dir /var/cache/apt/gensrclist
 
 %changelog
+* Fri Dec 17 2010 Alexey Tourbin <at@altlinux.ru> 0.6.0.10-alt1
+- genbasedir: renice bzip2 when running along with non-parallel xz
+
 * Fri Dec 17 2010 Alexey Tourbin <at@altlinux.ru> 0.6.0.9-alt1
 - genbasedir: implemented 2-way xz parallel compression
 
