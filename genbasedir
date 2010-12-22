@@ -324,8 +324,6 @@ else
 	Verbose "Components: $components"
 fi
 
-SRCIDX="$WORKDIR/total"
-
 #SRCIDX_COMP will be of the form "$WORKDIR/$comp"
 
 saved_list=
@@ -392,8 +390,6 @@ if [ -z "$hashonly" ]; then
 # package lists
 # -------------
 
-	:>"$SRCIDX"
-
 	Verbose -n 'Processing pkglists... '
 	for comp in $components; do
 		if [ ! -d $topdir/$distro/RPMS.$comp ]; then
@@ -440,8 +436,6 @@ if [ -z "$hashonly" ]; then
 		compare_file
 
 		compress_file "$newlist"
-
-		cat "$SRCIDX_COMP" >> "$SRCIDX"
 
 	done
 	Verbose 'done'
