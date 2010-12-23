@@ -426,7 +426,6 @@ if [ -z "$hashonly" ]; then
 			if LC_ALL=C fgrep -qs -x "$hash" "$release"; then
 				Verbose "$newlist is unchanged"
 				compare_file
-				[ -n "$saved_list" ] || rm -f "$newlist"
 				continue
 			fi
 			unchanged=
@@ -473,7 +472,6 @@ if [ -z "$hashonly" ]; then
 			if LC_ALL=C fgrep -qs -x "$hash" "$release"; then
 				Verbose "$newlist is unchanged"
 				compare_file
-				[ -n "$saved_list" ] || rm -f "$newlist"
 				continue
 			fi
 			unchanged=
@@ -492,7 +490,17 @@ if [ -z "$hashonly" ]; then
 	Verbose 'done'
 fi
 
+remove_uncompressed()
+{
+	if [ -n "$bz2only" ]; then
+		for comp in $components; do
+			rm -f "$pkglist.$comp" "$srclist.$comp"
+		done
+	fi
+}
+
 if [ -n "$maybe_unchanged" ] && [ -n "$unchanged" ]; then
+	remove_uncompressed
 	Verbose "$release is unchanged"
 	exit 0
 fi
@@ -637,12 +645,7 @@ if [ -n "$oldhashfile" -a -z "$listonly" ]; then
 	fi
 fi
 
-# Removing not compressed index files
-if [ -n "$bz2only" ]; then
-	for comp in $components; do
-		rm -f "$pkglist.$comp" "$srclist.$comp"
-	done
-fi
+remove_uncompressed
 
 Verbose 'All your base are belong to us!!!'
 
