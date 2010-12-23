@@ -468,6 +468,17 @@ if [ -z "$hashonly" ]; then
 			Fatal 'Error executing gensrclist.'
 		fi
 
+		if [ -n "$maybe_unchanged" ]; then
+			hash=$(phashstuff "$newlist" "$srclist_.$comp")
+			if LC_ALL=C fgrep -qs -x "$hash" "$release"; then
+				Verbose "$newlist is unchanged"
+				compare_file
+				[ -n "$saved_list" ] || rm -f "$newlist"
+				continue
+			fi
+			unchanged=
+		fi
+
 		# Compare with older srclist.
 		compare_file
 
