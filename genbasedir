@@ -64,9 +64,6 @@ notautomatic="false"
 
 changelog_since=
 
-GENPKGLIST=genpkglist
-GENSRCLIST=gensrclist
-
 make_bz2=1
 make_xz=1
 
@@ -279,17 +276,13 @@ else
 fi
 
 WORKDIR=
-
 exit_handler()
 {
-	local rc=$?
-	trap - EXIT
-	[ -z "$WORKDIR" ] || rm -rf "$WORKDIR"
-	exit $rc
+	[ -z "$WORKDIR" ] || rm -rf -- "$WORKDIR"
+	exit $1
 }
-
-trap exit_handler SIGHUP SIGPIPE SIGINT SIGQUIT SIGTERM EXIT
-
+trap 'exit_handler $?' EXIT
+trap 'exit 143' HUP PIPE INT QUIT TERM
 WORKDIR="$(mktemp -dt "$PROG.XXXXXXXXXX")" || exit
 
 if [ ! -d "$basedir" ]; then
@@ -323,8 +316,6 @@ if [ -z "$components" ]; then
 else
 	Verbose "Components: $components"
 fi
-
-#SRCIDX_COMP will be of the form "$WORKDIR/$comp"
 
 saved_list=
 
@@ -386,108 +377,84 @@ compress_file()
 	fi
 }
 
-if [ -z "$hashonly" ]; then
-# package lists
-# -------------
+if [ -n "$cachedir" ]; then
+	mkdir -p "$cachedir/genpkglist" "$cachedir/gensrclist"
+fi
 
-	Verbose -n 'Processing pkglists... '
+if [ -z "$hashonly" ]; then
+	Verbose -n 'Processing packages...'
+
 	for comp in $components; do
+
+		SRCIDX_COMP="$WORKDIR/$comp"
+
+		# pkglist
 		if [ ! -d $topdir/$distro/RPMS.$comp ]; then
+			# remove stale lists
+			rm -f "$pkglist.$comp" "$pkglist.$comp".{bz2,xz}
+			rm -f "$srclist.$comp" "$srclist.$comp".{bz2,xz}
 			continue
 		fi
-
-		Verbose -n "$comp "
-
-		SRCIDX_COMP="$WORKDIR/$comp" # will be rewritten by genpkglist
-
-		#Verbose -n 'pkglist '
-
-		newlist="$basedir/pkglist.$comp"
-
-		# Save older pkglist
-		save_file "$newlist"
-
-		[ -z "$cachedir" ] || [ -d "$cachedir/genpkglist" ] || mkdir "$cachedir/genpkglist"
+		Verbose -n " RPMS.$comp"
+		save_file "$pkglist.$comp"
 		(cd "$basedir" &&
-			"$GENPKGLIST" $progress $bloat $noscan --index "$SRCIDX_COMP" \
+			genpkglist $progress $bloat $noscan --index "$SRCIDX_COMP" \
 				${updateinfo:+--info "$updateinfo"} \
 				${cachedir:+--cachedir "$cachedir"} \
 				${useful_files:+--useful-files "$useful_files"} \
 				${changelog_since:+--changelog-since "$changelog_since"} \
 				"$topdir/$distro" "$comp")
-
 		if [ $? -ne 0 ]; then
-			echo
+			Verbose
 			Fatal 'Error executing genpkglist.'
 		fi
-
+		compare_file
 		if [ -n "$maybe_unchanged" ]; then
-			hash=$(phashstuff "$newlist" "$pkglist_.$comp")
+			hash=$(phashstuff "$pkglist.$comp" "$pkglist_.$comp")
 			if LC_ALL=C fgrep -qs -x "$hash" "$release"; then
-				Verbose "$newlist is unchanged"
-				compare_file
+				Verbose "$pkglist.$comp is unchanged"
 				continue
+			else
+				Verbose "$pkglist.$comp is going to be changed despite --maybe-unchanged"
 			fi
 			unchanged=
 		fi
+		compress_file "$pkglist.$comp"
 
-		# Compare with older pkglist.
-		compare_file
-
-		compress_file "$newlist"
-
-	done
-	Verbose 'done'
-
-	Verbose -n 'Processing srclists... '
-	for comp in $components; do
+		# srclist
 		if [ ! -d $srctopdir/SRPMS.$comp ]; then
+			# remove stale lists
+			rm -f "$srclist.$comp" "$srclist.$comp".{bz2,xz}
 			continue
 		fi
-
-		Verbose -n " $comp "
-
-		SRCIDX_COMP="$WORKDIR/$comp" # created by genpkglist, used by gensrclist
-
-		#Verbose -n 'srclist '
-
-		newlist="$basedir/srclist.$comp"
-
-		# Save older srclist
-		save_file "$newlist"
-
-		[ -z "$cachedir" ] || [ -d "$cachedir/gensrclist" ] || mkdir "$cachedir/gensrclist"
+		save_file "$srclist.$comp"
 		(cd "$basedir" &&
-			"$GENSRCLIST" $progress $flat $mapi \
+			gensrclist $progress $flat $mapi \
 				${cachedir:+--cachedir "$cachedir"} \
 				"$srctopdir" "$comp" "$SRCIDX_COMP")
-
 		if [ $? -ne 0 ]; then
-			echo
+			Verbose
 			Fatal 'Error executing gensrclist.'
 		fi
-
+		compare_file
 		if [ -n "$maybe_unchanged" ]; then
-			hash=$(phashstuff "$newlist" "$srclist_.$comp")
+			hash=$(phashstuff "$srclist.$comp" "$srclist_.$comp")
 			if LC_ALL=C fgrep -qs -x "$hash" "$release"; then
-				Verbose "$newlist is unchanged"
-				compare_file
+				Verbose "$srclist.$comp is unchanged"
 				continue
+			else
+				Verbose "$srclist.$comp is going to be changed despite --maybe-unchanged"
 			fi
 			unchanged=
 		fi
-
-		# Compare with older srclist.
-		compare_file
-
-		compress_file "$newlist"
+		compress_file "$srclist.$comp"
 
 	done
-	Verbose 'done'
+	Verbose ' done'
 
-	Verbose -n 'Waiting for bzip2 and xz to finish... '
+	Verbose -n 'Waiting for bzip2 and xz to finish...'
 	wait
-	Verbose 'done'
+	Verbose ' done'
 fi
 
 remove_uncompressed()
