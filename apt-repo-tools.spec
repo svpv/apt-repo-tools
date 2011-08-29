@@ -1,5 +1,5 @@
 Name: apt-repo-tools
-Version: 0.6.0.12
+Version: 0.6.0.13
 Release: alt1
 
 Summary: Utilities to create APT repositories
@@ -40,6 +40,9 @@ mkdir -p %buildroot/var/cache/apt/gen{pkg,src}list
 %dir /var/cache/apt/gensrclist
 
 %changelog
+* Tue Aug 30 2011 Dmitry V. Levin <ldv@altlinux.org> 0.6.0.13-alt1
+- genbasedir: synced with the version used by girar-builder.
+
 * Thu Dec 23 2010 Alexey Tourbin <at@altlinux.ru> 0.6.0.12-alt1
 - genbasedir: enabled --maybe-unchanged logic for srclists as well
 - genbasedir: fixed --maybe-unchanged for multi-component repo (#24433)
