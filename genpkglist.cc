@@ -114,6 +114,10 @@ bool usefulFile(const char *d, const char *b,
    if (strncmp(d, "/usr/share/java/", sizeof("/usr/share/java/") - 1) == 0
        && endswith(b, ".jar"))
       return true;
+   // ttf and otf fonts
+   if (strncmp(d, "/usr/share/fonts/", sizeof("/usr/share/fonts/") - 1) == 0
+       && (endswith(b, ".ttf") || endswith(b, ".otf")))
+      return true;
 
    // shared libraries
    if (strncmp(b, "lib", 3) == 0 && strstr(b + 3, ".so"))
