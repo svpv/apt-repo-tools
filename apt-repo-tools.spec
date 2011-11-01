@@ -1,5 +1,5 @@
 Name: apt-repo-tools
-Version: 0.6.0.13
+Version: 0.6.0.14
 Release: alt1
 
 Summary: Utilities to create APT repositories
@@ -40,6 +40,10 @@ mkdir -p %buildroot/var/cache/apt/gen{pkg,src}list
 %dir /var/cache/apt/gensrclist
 
 %changelog
+* Tue Nov 01 2011 Dmitry V. Levin <ldv@altlinux.org> 0.6.0.14-alt1
+- genpkglist: add ttf and otf fonts to useful files
+  (by Igor Vlasenko; closes: #26520).
+
 * Tue Aug 30 2011 Dmitry V. Levin <ldv@altlinux.org> 0.6.0.13-alt1
 - genbasedir: synced with the version used by girar-builder.
 
