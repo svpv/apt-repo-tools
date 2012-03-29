@@ -483,62 +483,56 @@ phash()
 if [ -n "$newhashfile" -a -z "$listonly" ]; then
 	Verbose -n 'Creating component releases...'
 	for comp in $components; do
-		if [ ! -f "$release.$comp" ]; then
-			Verbose -n " $comp"
-			echo "Archive: $archive"           >> "$release.$comp"
-			echo "Component: $comp"            >> "$release.$comp"
-			echo "Version: $version"           >> "$release.$comp"
-			echo "Origin: $origin"             >> "$release.$comp"
-			echo "Label: $label"               >> "$release.$comp"
-			echo "Architecture: $architecture" >> "$release.$comp"
-			echo "NotAutomatic: $notautomatic" >> "$release.$comp"
-		fi
+		Verbose -n " $comp"
+		save_file "$release.$comp"
+		cat > "$release.$comp" <<- __EOF__
+			Archive: $archive
+			Component: $comp
+			Version: $version
+			Origin: $origin
+			Label: $label
+			Architecture: $architecture
+			NotAutomatic: $notautomatic
+		__EOF__
+		compare_file
 	done
 	Verbose ' done'
 
-	if [ -f "$release" ]; then
-		save_file "$release"
-		if [ -z "$partial" ]; then
-			Verbose -n 'Updating global release file... '
-			sed -n -e "/^MD5Sum:/q" \
-				-e "s/^Date:.*\$/Date: $date/" \
-				-e "s/^Components:.*\$/Components: $components/" \
-				-e "p" "$release.old" > "$release"
-			echo "MD5Sum:" >> "$release"
-		else
-			Verbose -n 'Partially updating global release file... '
-			sed -n -e "/^\$/q" \
-				-e "s/^Date:.*\$/Date: $date/" \
-				-e "p" "$release.old" > "$release.pre"
-			for comp in $components; do
-				sed -e "\#^ .* $pkglist_.$comp\(.bz2\)\?\$#d" \
-				    -e "\#^ .* $srclist_.$comp\(.bz2\)\?\$#d" \
-				    -e "\#^ .* $release_.$comp\(.bz2\)\?\$#d" \
-				    -e "\#^ .* $pkglist_.$comp\(.xz\)\?\$#d" \
-				    -e "\#^ .* $srclist_.$comp\(.xz\)\?\$#d" \
-				    -e "\#^ .* $release_.$comp\(.xz\)\?\$#d" \
-				    -e "s/^\(Components:.*\) $comp\(.*\)\$/\1\2/" \
-					"$release.pre" > "$release.tmp"
-				mv -f "$release.tmp" "$release.pre"
-			done
-			sed -e "s/^\(Components:.*\)\$/\1 $components/" \
-				"$release.pre" > "$release"
-			rm -f "$release.pre"
-		fi
-		Verbose 'done'
+	Verbose -n 'Updating global release file... '
+	save_file "$release"
+	if [ -f "$release" -a -n "$partial" ]; then
+		sed -n -e "/^\$/q" \
+			-e "s/^Date:.*\$/Date: $date/" \
+			-e "p" "$release.old" > "$release.pre"
+		for comp in $components; do
+			sed -e "\#^ .* $pkglist_.$comp\(.bz2\)\?\$#d" \
+			    -e "\#^ .* $srclist_.$comp\(.bz2\)\?\$#d" \
+			    -e "\#^ .* $release_.$comp\(.bz2\)\?\$#d" \
+			    -e "\#^ .* $pkglist_.$comp\(.xz\)\?\$#d" \
+			    -e "\#^ .* $srclist_.$comp\(.xz\)\?\$#d" \
+			    -e "\#^ .* $release_.$comp\(.xz\)\?\$#d" \
+			    -e "s/^\(Components:.*\) $comp\(.*\)\$/\1\2/" \
+				"$release.pre" > "$release.tmp"
+			mv -f "$release.tmp" "$release.pre"
+		done
+		sed -e "s/^\(Components:.*\)\$/\1 $components/" \
+			"$release.pre" > "$release"
+		rm -f "$release.pre"
 	else
-		Verbose -n 'Creating global release file... '
-		echo "Origin: $origin"               >> "$release"
-		echo "Label: $label"                 >> "$release"
-		echo "Suite: $suite"                 >> "$release"
-		echo "Codename: $codename"           >> "$release"
-		echo "Date: `date -R`"               >> "$release"
-		echo "Architectures: $architectures" >> "$release"
-		echo "Components: $components"       >> "$release"
-		echo "Description: $description"     >> "$release"
-		echo "MD5Sum:"                       >> "$release"
-		Verbose "done"
+		cat > "$release" <<- __EOF__
+			Origin: $origin
+			Label: $label
+			Suite: $suite
+			Codename: $codename
+			Date: `date -R`
+			Architectures: $architectures
+			Components: $components
+			Description: $description
+			MD5Sum:
+		__EOF__
 	fi
+	compare_file
+	Verbose 'done'
 
 	Verbose -n 'Appending MD5Sum...'
 	for comp in $components; do
