@@ -1,4 +1,8 @@
 
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
+
 static inline
 bool endswith(const char *str, const char *suffix)
 {

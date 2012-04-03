@@ -1,6 +1,10 @@
 /*
  * $Id: cached_md5.cc,v 1.4 2003/01/29 13:47:31 niemeyer Exp $
  */
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
+
 #include <alloca.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -19,8 +23,6 @@
 #include <apt-pkg/tagfile.h>
 #include <apt-pkg/configuration.h>
 #include <apt-pkg/md5.h>
-
-#include <config.h>
 
 CachedMD5::CachedMD5(string DirName, string Domain)
 {

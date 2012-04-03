@@ -1,6 +1,10 @@
 /*
  * $Id: gensrclist.cc,v 1.8 2003/01/30 17:18:21 niemeyer Exp $
  */
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
+
 #include <alloca.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -22,7 +26,6 @@
 #include <apt-pkg/error.h>
 #include <apt-pkg/tagfile.h>
 #include <apt-pkg/configuration.h>
-#include <config.h>
 
 #include "rapt-compat.h"
 #include "crpmtag.h"

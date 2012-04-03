@@ -35,6 +35,10 @@
 #ifndef	__CACHED_MD5_H__
 #define	__CACHED_MD5_H__
 
+#ifdef HAVE_CONFIG_H
+# include "config.h"
+#endif
+
 #include <sys/types.h>
 #include <string>
 #include <map>
