@@ -1,5 +1,5 @@
 Name: apt-repo-tools
-Version: 0.6.0.15
+Version: 0.6.0.16
 Release: alt1
 
 Summary: Utilities to create APT repositories
@@ -40,6 +40,10 @@ mkdir -p %buildroot/var/cache/apt/gen{pkg,src}list
 %dir /var/cache/apt/gensrclist
 
 %changelog
+* Tue Apr 03 2012 Dmitry V. Levin <ldv@altlinux.org> 0.6.0.16-alt1
+- gen{pkg,src}list: redirected all error messages to cerr,
+  made package read errors fatal.
+
 * Fri Mar 30 2012 Dmitry V. Levin <ldv@altlinux.org> 0.6.0.15-alt1
 - genbasedir: update release files properly (closes: #26260).
 
