@@ -115,7 +115,7 @@ int main(int argc, char ** argv)
 	 if (i < argc) {
 	    srcListSuffix = argv[i];
 	 } else {
-	    cout << "gensrclist: argument missing for option --meta"<<endl;
+	    cerr << "gensrclist: argument missing for option --meta"<<endl;
 	    exit(1);
 	 }
       } else if (strcmp(argv[i], "--cachedir") == 0) {
@@ -123,7 +123,7 @@ int main(int argc, char ** argv)
 	 if (i < argc) {
             _config->Set("Dir::Cache", argv[i]);
 	 } else {
-            cout << "genpkglist: argument missing for option --cachedir"<<endl;
+            cerr << "genpkglist: argument missing for option --cachedir"<<endl;
 	    exit(1);
 	 }
       } else {
@@ -237,14 +237,14 @@ int main(int argc, char ** argv)
 
       struct stat sb;
       if (stat(fname, &sb) < 0) {
-	 cerr << "Warning: " << fname << ": " << strerror(errno) << endl;
-	 continue;
+	 cerr << "gensrclist: " << fname << ": " << strerror(errno) << endl;
+	 return 1;
       }
 
       Header h = readHeader(fname);
       if (h == NULL) {
-	 cerr << "Warning: " << fname << ": cannot read package header" << endl;
-	 continue;
+	 cerr << "gensrclist: " << fname << ": cannot read package header" << endl;
+	 return 1;
       }
 
       Header newHeader = headerNew();

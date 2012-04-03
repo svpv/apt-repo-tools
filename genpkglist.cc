@@ -345,7 +345,7 @@ int main(int argc, char ** argv)
 	 if (i < argc) {
 	    op_index = argv[i];
 	 } else {
-	    cout << "genpkglist: filename missing for option --index"<<endl;
+	    cerr << "genpkglist: filename missing for option --index"<<endl;
 	    exit(1);
 	 }
       } else if (strcmp(argv[i], "--info") == 0) {
@@ -353,7 +353,7 @@ int main(int argc, char ** argv)
 	 if (i < argc) {
 	    op_update = argv[i];
 	 } else {
-	    cout << "genpkglist: filename missing for option --info"<<endl;
+	    cerr << "genpkglist: filename missing for option --info"<<endl;
 	    exit(1);
 	 }
       } else if (strcmp(argv[i], "--useful-files") == 0) {
@@ -361,7 +361,7 @@ int main(int argc, char ** argv)
 	 if (i < argc) {
 	    op_usefulFiles = argv[i];
 	 } else {
-	    cout << "genpkglist: filename missing for option --useful-files"<<endl;
+	    cerr << "genpkglist: filename missing for option --useful-files"<<endl;
 	    return 1;
 	 }
       } else if (strcmp(argv[i], "--changelog-since") == 0) {
@@ -369,7 +369,7 @@ int main(int argc, char ** argv)
 	 if (i < argc) {
 	    changelog_since = atol(argv[i]);
 	 } else {
-	    cout << "genpkglist: argument missing for option --changelog-since" <<endl;
+	    cerr << "genpkglist: argument missing for option --changelog-since" <<endl;
 	    exit(1);
 	 }
       } else if (strcmp(argv[i], "--bloat") == 0) {
@@ -385,7 +385,7 @@ int main(int argc, char ** argv)
 	 if (i < argc) {
 	    pkgListSuffix = argv[i];
 	 } else {
-	    cout << "genpkglist: argument missing for option --meta"<<endl;
+	    cerr << "genpkglist: argument missing for option --meta"<<endl;
 	    exit(1);
 	 }
       } else if (strcmp(argv[i], "--cachedir") == 0) {
@@ -393,7 +393,7 @@ int main(int argc, char ** argv)
 	 if (i < argc) {
             _config->Set("Dir::Cache", argv[i]);
 	 } else {
-            cout << "genpkglist: argument missing for option --cachedir"<<endl;
+            cerr << "genpkglist: argument missing for option --cachedir"<<endl;
 	    exit(1);
 	 }
       } else {
@@ -483,7 +483,7 @@ int main(int argc, char ** argv)
    if (op_usefulFiles) {
       ifstream strm(op_usefulFiles);
       if (!strm) {
-	 cout << "genpkglist: cannot open " << op_usefulFiles <<endl;
+	 cerr << "genpkglist: cannot open " << op_usefulFiles <<endl;
 	 return 1;
       }
       string line;
@@ -507,14 +507,14 @@ int main(int argc, char ** argv)
       Header h = readHeader(rpm);
       if (h == NULL) {
 	 cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
-	 continue;
+	 return 1;
       }
 
       const char *srpm = getStringTag(h, RPMTAG_SOURCERPM);
       if (srpm == NULL) {
 	 cerr << "genpkglist: " << rpm << ": invalid binary package" << endl;
 	 headerFree(h);
-	 continue;
+	 return 1;
       }
       srpm = strdup(srpm);
       if (srpm == NULL) {
@@ -551,13 +551,13 @@ int main(int argc, char ** argv)
       struct stat sb;
       if (stat(rpm, &sb) < 0) {
 	 cerr << "genpkglist: " << rpm << ": " << strerror(errno) << endl;
-	 continue;
+	 return 1;
       }
 
       Header h = readHeader(rpm);
       if (h == NULL) {
 	 cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
-	 continue;
+	 return 1;
       }
 
       Header newHeader = headerNew();
