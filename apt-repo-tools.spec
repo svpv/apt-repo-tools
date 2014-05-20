@@ -40,8 +40,12 @@ mkdir -p %buildroot/var/cache/apt/gen{pkg,src}list
 %dir /var/cache/apt/gensrclist
 
 %changelog
-* Mon May 19 2014 Gleb F-Malinovskiy <glebfm@altlinux.org> 0.6.0.18-alt1
-- genpkglist: add buildtime.
+* Tue May 20 2014 Gleb F-Malinovskiy <glebfm@altlinux.org> 0.6.0.18-alt1
+- genpkglist:
+  + Added buildtime.
+  + Dropped OS.
+gensrclistlist:
+  + Dropped OS and SOURCERPM.
 
 * Tue Mar 11 2014 Dmitry V. Levin <ldv@altlinux.org> 0.6.0.17-alt2
 - Rebuilt.
