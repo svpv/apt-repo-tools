@@ -1,5 +1,5 @@
 Name: apt-repo-tools
-Version: 0.6.0.18
+Version: 0.6.0.19
 Release: alt1
 
 Summary: Utilities to create APT repositories
@@ -40,12 +40,15 @@ mkdir -p %buildroot/var/cache/apt/gen{pkg,src}list
 %dir /var/cache/apt/gensrclist
 
 %changelog
-* Tue May 20 2014 Gleb F-Malinovskiy <glebfm@altlinux.org> 0.6.0.18-alt1
+* Tue Jul 01 2014 Gleb F-Malinovskiy <glebfm@altlinux.org> 0.6.0.19-alt1
 - genpkglist:
-  + Added buildtime.
   + Dropped OS.
-gensrclistlist:
+- gensrclistlist:
   + Dropped OS and SOURCERPM.
+- Rebuilt with rpm-4.0.4-alt100.78 (different size of rpmTagTable).
+
+* Mon May 19 2014 Gleb F-Malinovskiy <glebfm@altlinux.org> 0.6.0.18-alt1
+- genpkglist: add buildtime.
 
 * Tue Mar 11 2014 Dmitry V. Levin <ldv@altlinux.org> 0.6.0.17-alt2
 - Rebuilt.
