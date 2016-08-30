@@ -67,38 +67,16 @@ raptTag tags[] =  {
 };
 int numTags = sizeof(tags) / sizeof(tags[0]);
 
-
 static
 void copyChangelog(Header h1, Header h2, long since)
 {
-   int_32 timet, namet, textt;
-   int_32 *time = NULL;
-   const char **name = NULL, **text = NULL;
-   int_32 n = 0; // in
-   int_32 m = 0; // out
-   int i;
-   int rc = headerGetEntry(h1, RPMTAG_CHANGELOGTIME, &timet, (void**)&time, &n)
-         && headerGetEntry(h1, RPMTAG_CHANGELOGNAME, &namet, (void**)&name, NULL)
-         && headerGetEntry(h1, RPMTAG_CHANGELOGTEXT, &textt, (void**)&text, NULL);
-   if (!rc || n < 1)
-      goto exit;
-
-   for (i = 0; i < n; i++)
-      if (time[i] >= since)
-	 m++;
-      else
-	 break;
-   if (m < n)
-      m++;
-
-   headerAddEntry(h2, RPMTAG_CHANGELOGTIME, timet, time, m);
-   headerAddEntry(h2, RPMTAG_CHANGELOGNAME, namet, name, m);
-   headerAddEntry(h2, RPMTAG_CHANGELOGTEXT, textt, text, m);
-
-exit:
-   headerFreeData(time, (rpmTagType)timet);
-   headerFreeData(name, (rpmTagType)namet);
-   headerFreeData(text, (rpmTagType)textt);
+    rpmTagVal copyTags[] = {
+        RPMTAG_CHANGELOGTIME,
+        RPMTAG_CHANGELOGNAME,
+        RPMTAG_CHANGELOGTEXT,
+        0
+    };
+    headerCopyTags(h1, h2, copyTags);
 }
 
 
@@ -140,28 +118,39 @@ static
 void copyStrippedFileList(Header h1, Header h2,
 			  const set<string> &depFiles)
 {
-   raptTagType bnt, dnt, dit;
    struct {
       raptTagCount bnc, dnc, dic;
       const char **bn, **dn;
-      raptInt *di;
+      uint32_t *di;
    }
    l1 = {0}, l2 = {0};
 
+   struct rpmtd_s bnames, dnames, didexes;
    int rc;
-   rc = headerGetEntry(h1, RPMTAG_BASENAMES, &bnt, (void**)&l1.bn, &l1.bnc);
+
+   rc = headerGet(h1, RPMTAG_BASENAMES, &bnames, HEADERGET_MINMEM);
    if (rc != 1)
       return;
-   assert(bnt == RPM_STRING_ARRAY_TYPE);
-   assert(l1.bnc > 0);
+   assert(rpmtdType(&bnames) == RPM_STRING_ARRAY_TYPE);
+   assert(rpmtdCount(&bnames) > 0);
 
-   rc = headerGetEntry(h1, RPMTAG_DIRNAMES, &dnt, (void**)&l1.dn, &l1.dnc);
-   assert(rc == 1);
-   assert(dnt == RPM_STRING_ARRAY_TYPE);
+   l1.bn = (const char**) bnames.data;
+   l1.bnc = bnames.count;
 
-   rc = headerGetEntry(h1, RPMTAG_DIRINDEXES, &dit, (void**)&l1.di, &l1.dic);
+   rc = headerGet(h1, RPMTAG_DIRNAMES, &dnames, HEADERGET_MINMEM);
    assert(rc == 1);
-   assert(dit == RPM_INT32_TYPE);
+   assert(rpmtdType(&dnames) == RPM_STRING_ARRAY_TYPE);
+
+   l1.dn = (const char**) dnames.data;
+   l1.dnc = dnames.count;
+
+   rc = headerGet(h1, RPMTAG_DIRINDEXES, &didexes, HEADERGET_MINMEM);
+   assert(rc == 1);
+   assert(rpmtdType(&didexes) == RPM_INT32_TYPE);
+
+   l1.di = (uint32_t *) didexes.data;
+   l1.dic = didexes.count;
+
    assert(l1.bnc == l1.dic);
 
    for (int i = 0; i < l1.bnc; i++)
@@ -175,7 +164,7 @@ void copyStrippedFileList(Header h1, Header h2,
       if (l2.bnc == 0) {
          l2.bn = new const char *[l1.bnc];
          l2.dn = new const char *[l1.dnc];
-         l2.di = new raptInt[l1.dic];
+         l2.di = new uint32_t[l1.dic];
       }
 
       l2.bn[l2.bnc++] = b;
@@ -197,37 +186,35 @@ void copyStrippedFileList(Header h1, Header h2,
    assert(l2.bnc == l2.dic);
 
    if (l2.bnc > 0) {
-      headerAddEntry(h2, RPMTAG_BASENAMES, bnt, l2.bn, l2.bnc);
-      headerAddEntry(h2, RPMTAG_DIRNAMES, dnt, l2.dn, l2.dnc);
-      headerAddEntry(h2, RPMTAG_DIRINDEXES, dit, l2.di, l2.dic);
+      headerPutStringArray(h2, RPMTAG_BASENAMES, l2.bn, l2.bnc);
+      headerPutStringArray(h2, RPMTAG_DIRNAMES, l2.dn, l2.dnc);
+      headerPutUint32(h2, RPMTAG_DIRINDEXES, l2.di, l2.dic);
       delete[] l2.bn;
       delete[] l2.dn;
       delete[] l2.di;
    }
 
-   headerFreeData(l1.bn, (rpmTagType)bnt);
-   headerFreeData(l1.dn, (rpmTagType)dnt);
-   headerFreeData(l1.di, (rpmTagType)dit);
+   rpmtdFreeData(&bnames);
+   rpmtdFreeData(&dnames);
+   rpmtdFreeData(&didexes);
 }
 
 
 static
 void findDepFiles(Header h, set<string> &depFiles, raptTag tag)
 {
-   raptTagType type;
-   raptTagCount count;
-   raptTagData data;
-   int rc = headerGetEntry(h, tag, &type, &data, &count);
+   struct rpmtd_s td;
+   int rc = headerGet(h, tag, &td, HEADERGET_MINMEM);
    if (rc != 1)
       return;
-   assert(type == RPM_STRING_ARRAY_TYPE);
-   const char **deps = (const char **) data;
-   for (int i = 0; i < count; i++) {
+   assert(rpmtdType(&td) == RPM_STRING_ARRAY_TYPE);
+   const char **deps = (const char **) td.data;
+   for (rpm_count_t i = 0; i < td.count; i++) {
       const char *dep = deps[i];
       if (*dep == '/')
-	 depFiles.insert(dep);
+         depFiles.insert(dep);
    }
-   headerFreeData(data, (rpmTagType)type);
+   rpmtdFreeData(&td);
 }
 
 
@@ -275,10 +262,10 @@ void addInfoTags(Header h, const char *fname,
    if (I == M.end())
       return;
    const UpdateInfo &info = I->second;
-   addStringTag(h, CRPMTAG_UPDATE_SUMMARY, info.summary.c_str());
-   addStringTag(h, CRPMTAG_UPDATE_URL, info.url.c_str());
-   addStringTag(h, CRPMTAG_UPDATE_DATE, info.date.c_str());
-   addStringTag(h, CRPMTAG_UPDATE_IMPORTANCE, info.importance.c_str());
+   headerPutString(h, CRPMTAG_UPDATE_SUMMARY, info.summary.c_str());
+   headerPutString(h, CRPMTAG_UPDATE_URL, info.url.c_str());
+   headerPutString(h, CRPMTAG_UPDATE_DATE, info.date.c_str());
+   headerPutString(h, CRPMTAG_UPDATE_IMPORTANCE, info.importance.c_str());
 }
 
 
@@ -513,7 +500,7 @@ int main(int argc, char ** argv)
 	 return 1;
       }
 
-      const char *srpm = getStringTag(h, RPMTAG_SOURCERPM);
+      const char *srpm = headerGetString(h, RPMTAG_SOURCERPM);
       if (srpm == NULL) {
 	 cerr << "genpkglist: " << rpm << ": invalid binary package" << endl;
 	 headerFree(h);
@@ -581,11 +568,11 @@ int main(int argc, char ** argv)
 
       char md5[34];
       md5cache.MD5ForFile(rpm, sb.st_mtime, md5);
-      addStringTag(newHeader, CRPMTAG_MD5, md5);
+      headerPutString(newHeader, CRPMTAG_MD5, md5);
 
       if (idxfp) {
-	 const char *srpm = getStringTag(h, RPMTAG_SOURCERPM);
-	 const char *name = getStringTag(h, RPMTAG_NAME);
+	 const char *srpm = headerGetString(h, RPMTAG_SOURCERPM);
+	 const char *name = headerGetString(h, RPMTAG_NAME);
 	 if (srpm && name)
 	    fprintf(idxfp, "%s %s\n", srpm, name);
       }

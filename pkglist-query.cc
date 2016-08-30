@@ -26,7 +26,7 @@ int main(int argc, char *argv[])
 	Header h;
 	while ((h = headerRead(Fd, HEADER_MAGIC_YES)) != NULL) {
 	    const char *err = "unknown error";
-#ifdef RPM_HAVE_HEADERFORMAT
+#ifdef HAVE_HEADERFORMAT
 	    char *str = headerFormat(h, format, &err);
 #else
 	    char *str = headerSprintf(h, format, rpmTagTable, rpmHeaderFormats, &err);

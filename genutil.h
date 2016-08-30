@@ -68,7 +68,7 @@ Header readHeader(const char *path)
       assert(ts);
       rpmtsSetVSFlags(ts, (rpmVSFlags_e)-1);
    }
-   int rc = rpmReadPackageFile(ts, fd, dirEntries[entry_cur]->d_name, &h);
+   int rc = rpmReadPackageFile(ts, fd, path, &h);
    bool ok = (rc == RPMRC_OK || rc == RPMRC_NOTTRUSTED || rc == RPMRC_NOKEY);
 #else
    int rc = rpmReadPackageHeader(fd, &h, NULL, NULL, NULL);
@@ -80,26 +80,17 @@ Header readHeader(const char *path)
    return NULL;
 }
 
-#if RPM_VERSION >= 0x040000
-// No prototype from rpm after 4.0.
-extern "C"
-int headerGetRawEntry(Header h, raptTag tag, raptTagType * type,
-		      raptTagData p, raptTagCount *c);
-#endif
-
 static
 void copyTag(Header h1, Header h2, raptTag tag)
 {
-   raptTagType type;
-   raptTagCount count;
-   raptTagData data;
+   rpmtd td = rpmtdNew();
    // Copy raw entry, so that internationalized strings
    // will get copied correctly.
-   int rc = headerGetRawEntry(h1, tag, &type, &data, &count);
-   if (rc == 1) {
-      headerAddEntry(h2, tag, type, data, count);
-      headerFreeData(data, (rpmTagType)type);
+   if (headerGet(h1, tag, td, HEADERGET_RAW) == 1) {
+      headerPut(h2, td, HEADERPUT_DEFAULT);
+      rpmtdFreeData(td);
    }
+   rpmtdFree(td);
 }
 
 static
@@ -109,32 +100,11 @@ void copyTags(Header h1, Header h2, int tagc, raptTag tagv[])
       copyTag(h1, h2, tagv[i]);
 }
 
-static inline
-int addStringTag(Header h, raptTag tag, const char *str)
-{
-   return headerAddEntry(h, tag, RPM_STRING_TYPE, str, 1);
-}
-
-static inline
-const char *getStringTag(Header h, raptTag tag)
-{
-   raptTagType type;
-   raptTagCount count;
-   raptTagData data;
-   int rc = headerGetEntry(h, tag, &type, &data, &count);
-   if (rc == 1) {
-      assert(type == RPM_STRING_TYPE && count == 1);
-      return (const char *)data;
-   }
-   return NULL;
-}
-
 static
 void addAptTags(Header h, const char *d, const char *b, unsigned int st_size)
 {
-   raptInt size[1] = { st_size };
-   addStringTag(h, CRPMTAG_DIRECTORY, d);
-   addStringTag(h, CRPMTAG_FILENAME, b);
-   headerAddEntry(h, CRPMTAG_FILESIZE, RPM_INT32_TYPE, size, 1);
+   headerPutString(h, CRPMTAG_DIRECTORY, d);
+   headerPutString(h, CRPMTAG_FILENAME, b);
+   headerPutUint32(h, CRPMTAG_FILESIZE, &st_size, 1);
 }
 
