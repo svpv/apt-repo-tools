@@ -23,8 +23,6 @@ signature=
 listonly=
 hashonly=
 partial=
-newhashfile=1
-oldhashfile=1
 mapi=
 bz2only=
 updateinfo=
@@ -91,10 +89,6 @@ Options:
    --hashonly         Do hash stuff only
    --listonly         Generate pkglists/srclists and quit
    --partial          Update just some of the already existent components
-   --newhashfile      Enable generation of new style hashfile
-   --no-newhashfile   Disable generation of new style hashfile
-   --oldhashfile      Enable generation of old style hashfile
-   --no-oldhashfile   Disable generation of old style hashfile
    --bz2only          Generate only compressed lists
    --progress         Show progress bars for genpkglist/gensrclist;
                       implies --verbose
@@ -188,14 +182,10 @@ while :; do
 			;;
 		--partial) shift; partial=1
 			;;
-		--oldhashfile) shift; oldhashfile=1
-			;;
-		--no-oldhashfile) shift; oldhashfile=
-			;;
-		--newhashfile) shift; newhashfile=1
-			;;
-		--no-newhashfile) shift; newhashfile=
-			;;
+		--oldhashfile)		shift ;;	# legacy option
+		--no-oldhashfile)	shift ;;	# legacy option
+		--newhashfile)		shift ;;	# legacy option
+		--no-newhashfile)	shift ;;	# legacy option
 		-h|--help) USAGE 0
 			;;
 		--create) shift; create=1
@@ -479,8 +469,8 @@ phash()
 	fi
 }
 
-# Creating new style hashfile
-if [ -n "$newhashfile" -a -z "$listonly" ]; then
+# Create hashfile
+if [ -z "$listonly" ]; then
 	Verbose -n 'Creating component releases...'
 	for comp in $components; do
 		Verbose -n " $comp"
@@ -562,48 +552,6 @@ if [ -n "$newhashfile" -a -z "$listonly" ]; then
 
 	# Compare with older release
 	compare_file
-fi
-
-# Creating old style hashfile
-if [ -n "$oldhashfile" -a -z "$listonly" ]; then
-	hf="$basedir/hashfile"
-	save_file "$hf"
-	: > "$hf"
-
-	# TODO: handle 'partial' option
-
-	Verbose -n 'Creating legacy hashfile...'
-	echo "MD5SUM:" >> $hf
-
-	for comp in $components; do
-		Verbose -n " $comp"
-
-		phash "$pkglist.$comp" "$oldpkglist_.$comp" "$hf"
-		phash "$srclist.$comp" "$oldsrclist_.$comp" "$hf"
-		phash "$pkglist.$comp.bz2" "$oldpkglist_.$comp.bz2" "$hf"
-		phash "$srclist.$comp.bz2" "$oldsrclist_.$comp.bz2" "$hf"
-		phash "$pkglist.$comp.xz" "$oldpkglist_.$comp.xz" "$hf"
-		phash "$srclist.$comp.xz" "$oldsrclist_.$comp.xz" "$hf"
-		phash "$release.$comp" "$oldrelease_.$comp" "$hf"
-	done
-	Verbose ' done'
-	echo >> $hf
-
-	compare_file
-
-	if [ -n "$signature" ]; then
-		# Save older hashfile.gpg
-		save_file "$basedir/hashfile.gpg"
-
-		if [ -n "$defaultkey" ]; then
-			gpg -armour --quiet --sign --yes -o "$basedir/hashfile.gpg" --default-key "$defaultkey" "$basedir/hashfile"
-		else
-			gpg -armour --quiet --sign --yes -o "$basedir/hashfile.gpg" "$basedir/hashfile"
-		fi
-
-		# Compare with older hashfile.gpg
-		compare_file
-	fi
 fi
 
 remove_uncompressed
