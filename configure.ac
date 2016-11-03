@@ -41,6 +41,8 @@ AC_CHECK_HEADER([apt-pkg/configuration.h],,
 AC_CHECK_LIB([apt-pkg], [main],,
 	[AC_MSG_ERROR([apt-pkg library not found])] )
 
+PKG_CHECK_MODULES([LZ4], [liblz4 >= 126])
+
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile])
 AC_OUTPUT

@@ -86,9 +86,11 @@ void usage()
    cerr << " --cachedir=DIR  use a custom directory for package md5sum cache"<<endl;
 }
 
+#include "zhdr.h"
+
 int main(int argc, char ** argv) 
 {
-   char buf[300];
+   char buf[PATH_MAX];
    char cwd[PATH_MAX];
    string srpmdir;
    struct dirent **dirEntries;
@@ -210,9 +212,9 @@ int main(int argc, char ** argv)
    }
    
    if (srcListSuffix != NULL)
-      sprintf(buf, "%s/srclist.%s", cwd, srcListSuffix);
+      sprintf(buf, "%s/srclist.%s" ZHDR_SUFFIX, cwd, srcListSuffix);
    else
-      sprintf(buf, "%s/srclist.%s", cwd, arg_suffix);
+      sprintf(buf, "%s/srclist.%s" ZHDR_SUFFIX, cwd, arg_suffix);
    
    FD_t outfd;
    if (srcListAppend == true && FileExists(buf)) {
@@ -256,16 +258,24 @@ int main(int argc, char ** argv)
       md5cache.MD5ForFile(fname, sb.st_mtime, md5);
       addStringTag(newHeader, CRPMTAG_MD5, md5);
 
+      auto zWrite = [&]()
+      {
+	 size_t zsize;
+	 void *zblob = zhdr(newHeader, zsize);
+	 Fwrite(zblob, zsize, 1, outfd);
+	 free(zblob);
+      };
+
       map<string, vector<const char *> >::const_iterator I = srpm2rpms.find(fname);
       if (I != srpm2rpms.end()) {
 	 const vector<const char *> &rpmv = I->second;
 	 assert(rpmv.size() > 0);
 	 headerAddEntry(newHeader, CRPMTAG_BINARY, RPM_STRING_ARRAY_TYPE,
 		        &rpmv[0], rpmv.size());
-	 headerWrite(outfd, newHeader, HEADER_MAGIC_YES);
+	 zWrite();
       }
       else if (!mapi) { // write anyway
-	 headerWrite(outfd, newHeader, HEADER_MAGIC_YES);
+	 zWrite();
       }
 
       headerFree(newHeader);

@@ -306,6 +306,8 @@ void usage()
 struct rec {
    const char *rpm;
    const char *srpm;
+   void *zblob;
+   size_t zsize;
 };
 
 static
@@ -319,6 +321,8 @@ int recCmp(const void *rec1_, const void *rec2_)
    return strcmp(rec1->rpm, rec2->rpm);
 }
 
+#include "zhdr.h"
+#include "slab.h"
 
 int main(int argc, char ** argv) 
 {
@@ -463,9 +467,9 @@ int main(int argc, char ** argv)
    }
 
    if (pkgListSuffix != NULL)
-	   pkglist_path = pkglist_path + "/base/pkglist." + pkgListSuffix;
+      pkglist_path = pkglist_path + "/base/pkglist." + pkgListSuffix + ZHDR_SUFFIX;
    else
-	   pkglist_path = pkglist_path + "/base/pkglist." + op_suf;
+      pkglist_path = pkglist_path + "/base/pkglist." + op_suf + ZHDR_SUFFIX;
    
    FD_t outfd;
    if (pkgListAppend == true && FileExists(pkglist_path)) {
@@ -498,70 +502,16 @@ int main(int argc, char ** argv)
    if (entry_no > 0)
       recs = new struct rec[entry_no];
 
-   for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
-
-      if (progressBar)
-	 simpleProgress(entry_cur + 1, entry_no);
-
-      const char *rpm = dirEntries[entry_cur]->d_name;
-
-      Header h = readHeader(rpm);
-      if (h == NULL) {
-	 cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
-	 return 1;
-      }
-
-      const char *srpm = getStringTag(h, RPMTAG_SOURCERPM);
-      if (srpm == NULL) {
-	 cerr << "genpkglist: " << rpm << ": invalid binary package" << endl;
-	 headerFree(h);
-	 return 1;
-      }
-      srpm = strdup(srpm);
-      if (srpm == NULL) {
-	 cerr << "genpkglist: " << strerror(errno) << endl;
-	 return 1;
-      }
-
-      recs[nrec].rpm = rpm;
-      recs[nrec].srpm = srpm;
-      nrec++;
-
-      if (!(fullFileList || noScan)) {
-	 findDepFiles(h, usefulFiles, RPMTAG_REQUIRENAME);
-	 findDepFiles(h, usefulFiles, RPMTAG_PROVIDENAME);
-	 findDepFiles(h, usefulFiles, RPMTAG_CONFLICTNAME);
-	 findDepFiles(h, usefulFiles, RPMTAG_OBSOLETENAME);
-      }
-
-      headerFree(h);
-   }
-
-   if (nrec > 1)
-      qsort(recs, nrec, sizeof(recs[0]), recCmp);
-
    CachedMD5 md5cache(string(op_dir) + string(op_suf), "genpkglist");
 
-   for (int reci = 0; reci < nrec; reci++) {
-
-      if (progressBar)
-	 simpleProgress(reci + 1, nrec);
-
-      const char *rpm = recs[reci].rpm;
-
+   auto processHeader = [&](Header h, const char *rpm)
+   {
       struct stat sb;
-      if (stat(rpm, &sb) < 0) {
-	 cerr << "genpkglist: " << rpm << ": " << strerror(errno) << endl;
-	 return 1;
-      }
-
-      Header h = readHeader(rpm);
-      if (h == NULL) {
-	 cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
-	 return 1;
-      }
+      int statrc = stat(rpm, &sb);
+      assert(statrc == 0);
 
       Header newHeader = headerNew();
+      assert(newHeader);
       copyTags(h, newHeader, numTags, tags);
       if (!fullFileList)
 	 copyStrippedFileList(h, newHeader, usefulFiles);
@@ -587,13 +537,83 @@ int main(int argc, char ** argv)
 	 if (srpm && name)
 	    fprintf(idxfp, "%s %s\n", srpm, name);
       }
+      return newHeader;
+   };
 
-      headerWrite(outfd, newHeader, HEADER_MAGIC_YES);
+   Slab slab;
 
-      headerFree(newHeader);
+   for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
+
+      if (progressBar)
+	 simpleProgress(entry_cur + 1, entry_no);
+
+      const char *rpm = dirEntries[entry_cur]->d_name;
+
+      Header h = readHeader(rpm);
+      if (h == NULL) {
+	 cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
+	 return 1;
+      }
+
+      const char *srpm = getStringTag(h, RPMTAG_SOURCERPM);
+      if (srpm == NULL) {
+	 cerr << "genpkglist: " << rpm << ": invalid binary package" << endl;
+	 headerFree(h);
+	 return 1;
+      }
+
+      recs[nrec].rpm = rpm;
+      recs[nrec].srpm = slab.strdup(srpm);
+
+      if (fullFileList || noScan) {
+	 // can process even now
+	 Header newHeader = processHeader(h, rpm);
+	 void *zblob = zhdr(newHeader, recs[nrec].zsize);
+	 headerFree(newHeader);
+	 recs[nrec].zblob = slab.put(zblob, recs[nrec].zsize);
+	 free(zblob);
+      }
+      else {
+	 // need preprocessing
+	 findDepFiles(h, usefulFiles, RPMTAG_REQUIRENAME);
+	 findDepFiles(h, usefulFiles, RPMTAG_PROVIDENAME);
+	 findDepFiles(h, usefulFiles, RPMTAG_CONFLICTNAME);
+	 findDepFiles(h, usefulFiles, RPMTAG_OBSOLETENAME);
+      }
+
       headerFree(h);
+      nrec++;
    }
 
+   if (nrec > 1)
+      qsort(recs, nrec, sizeof(recs[0]), recCmp);
+
+   for (int reci = 0; reci < nrec; reci++) {
+
+      if (progressBar)
+	 simpleProgress(reci + 1, nrec);
+
+      if (fullFileList || noScan) {
+	 // only left to write
+	 Fwrite(recs[reci].zblob, recs[reci].zsize, 1, outfd);
+	 continue;
+      }
+
+      // full second pass, read the header again
+      const char *rpm = recs[reci].rpm;
+      Header h = readHeader(rpm);
+      assert(h);
+      Header newHeader = processHeader(h, rpm);
+      headerFree(h);
+      size_t zsize;
+      void *zblob = zhdr(newHeader, zsize);
+      headerFree(newHeader);
+      Fwrite(zblob, zsize, 1, outfd);
+      free(zblob);
+   }
+#if 0
+   system("ps up $PPID");
+#endif
    Fclose(outfd);
 
    return 0;

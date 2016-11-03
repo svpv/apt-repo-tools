@@ -11,7 +11,7 @@ Source: %name-%version.tar
 Provides: apt-utils = 0.5.15lorg4
 Obsoletes: apt-utils <= 0.5.15lorg4
 
-BuildRequires: gcc-c++ libapt-devel librpm-devel
+BuildRequires: gcc-c++ libapt-devel librpm-devel liblz4-devel
 
 %description
 This package contains the utility programs that can prepare a repository
