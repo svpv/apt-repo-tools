@@ -4,6 +4,16 @@
 #endif
 
 static inline
+bool startswith(const char *str, const char *prefix)
+{
+   size_t len1 = strlen(str);
+   size_t len2 = strlen(prefix);
+   if (len1 < len2)
+      return false;
+   return memcmp(str, prefix, len2) == 0;
+}
+
+static inline
 bool endswith(const char *str, const char *suffix)
 {
    size_t len1 = strlen(str);
@@ -11,9 +21,7 @@ bool endswith(const char *str, const char *suffix)
    if (len1 < len2)
       return false;
    str += (len1 - len2);
-   if (strcmp(str, suffix))
-      return false;
-   return true;
+   return memcmp(str, suffix, len2) == 0;
 }
 
 static

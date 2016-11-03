@@ -114,12 +114,10 @@ bool usefulFile(const char *d, const char *b,
    if (strcmp(d, "/usr/lib/kde4bin/") == 0)
       return true;
    // Java jars
-   if (strncmp(d, "/usr/share/java/", sizeof("/usr/share/java/") - 1) == 0
-       && endswith(b, ".jar"))
+   if (startswith(d, "/usr/share/java/") && endswith(b, ".jar"))
       return true;
    // ttf and otf fonts
-   if (strncmp(d, "/usr/share/fonts/", sizeof("/usr/share/fonts/") - 1) == 0
-       && (endswith(b, ".ttf") || endswith(b, ".otf")))
+   if (startswith(d, "/usr/share/fonts/") && (endswith(b, ".ttf") || endswith(b, ".otf")))
       return true;
 
    // shared libraries
