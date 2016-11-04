@@ -13,6 +13,9 @@ Obsoletes: apt-utils <= 0.5.15lorg4
 
 BuildRequires: gcc-c++ libapt-devel librpm-devel liblz4-devel
 
+# dd iflag=fullblock
+Requires: coreutils >= 7.0
+
 %description
 This package contains the utility programs that can prepare a repository
 of RPMS binary and source packages for future access by APT (by

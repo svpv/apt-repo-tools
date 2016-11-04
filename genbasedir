@@ -141,9 +141,17 @@ EOF
 
 phashstuff()
 {
-    size=`wc -c <"$1"`
-    md5=`md5sum "$1"|cut -f1 -d\  `
-    echo " $md5 $size $2"
+	case "$1" in
+		*.lz4)
+			size=$(lz4 -d <"$1" |wc -c)
+			md5=$(lz4 -d <"$1" |md5sum |cut -d' ' -f1)
+			;;
+		*)
+			size=$(wc -c <"$1")
+			md5=$(md5sum <"$1" |cut -d' ' -f1)
+			;;
+	esac
+	echo " $md5 $size $2"
 }
 
 TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,no-scan,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic:,cachedir:,useful-files:,changelog-since: \
@@ -333,11 +341,11 @@ compare_file()
 
 compress_file()
 {
-	local filesize halfsize pid pxz=
+	local filesize halfsize pxz=
 
 	rm -f "$1.xz" "$1.yz"
 	if [ -n "$make_xz" ]; then
-		filesize=$(stat -c '%s' "$1")
+		filesize=$(lz4 -d <"$1".lz4 |wc -c)
 		if [ "$filesize" -ge $((4*8*1024*1024)) ]; then
 			# The file is large enough (as compared to typical dictionary size).
 			# Note that .xz files can be concatenated, so it's nice to have
@@ -346,24 +354,25 @@ compress_file()
 		fi
 		if [ -n "$pxz" ]; then
 			halfsize=$(($filesize/2))
-			dd if="$1" bs="$halfsize" count=1 2>/dev/null |xz >"$1.xz" & pid=$!
-			dd if="$1" bs="$halfsize"  skip=1 2>/dev/null |xz >"$1.yz"
-			wait "$pid"
+			lz4 -d <"$1".lz4 |dd bs=$halfsize count=1 iflag=fullblock 2>/dev/null |xz >"$1.xz" &
+			lz4 -d <"$1".lz4 |dd bs=$halfsize  skip=1 iflag=fullblock 2>/dev/null |xz >"$1.yz"
+			wait $!
 			cat "$1.yz" >>"$1.xz"
 			rm -f "$1.yz"
 		else
-			xz -k "$1"
+			lz4 -d <"$1".lz4 |xz >"$1".xz
 		fi &
 	fi
 
 	rm -f "$1.bz2"
 	if [ -n "$make_bz2" ]; then
+		lz4 -d <"$1".lz4 |
 		if [ -n "$pxz" ]; then
-			bzip2 -k "$1"
+			bzip2
 		else
 			# Assuming non-parallel xz is expensive...
-			nice bzip2 -k "$1"
-		fi &
+			nice bzip2
+		fi >"$1".bz2 &
 	fi
 }
 
@@ -381,12 +390,12 @@ if [ -z "$hashonly" ]; then
 		# pkglist
 		if [ ! -d $topdir/$distro/RPMS.$comp ]; then
 			# remove stale lists
-			rm -f "$pkglist.$comp" "$pkglist.$comp".{bz2,xz}
-			rm -f "$srclist.$comp" "$srclist.$comp".{bz2,xz}
+			rm -f "$pkglist.$comp"{.lz4,} "$pkglist.$comp".{bz2,xz}
+			rm -f "$srclist.$comp"{.lz4,} "$srclist.$comp".{bz2,xz}
 			continue
 		fi
 		Verbose -n " RPMS.$comp"
-		save_file "$pkglist.$comp"
+		save_file "$pkglist.$comp".lz4
 		(cd "$basedir" &&
 			genpkglist $progress $bloat $noscan --index "$SRCIDX_COMP" \
 				${updateinfo:+--info "$updateinfo"} \
@@ -400,7 +409,7 @@ if [ -z "$hashonly" ]; then
 		fi
 		compare_file
 		if [ -n "$maybe_unchanged" ]; then
-			hash=$(phashstuff "$pkglist.$comp" "$pkglist_.$comp")
+			hash=$(phashstuff "$pkglist.$comp".lz4 "$pkglist_.$comp")
 			if LC_ALL=C fgrep -qs -x "$hash" "$release"; then
 				Verbose "$pkglist.$comp is unchanged"
 				continue
@@ -414,10 +423,10 @@ if [ -z "$hashonly" ]; then
 		# srclist
 		if [ ! -d $srctopdir/SRPMS.$comp ]; then
 			# remove stale lists
-			rm -f "$srclist.$comp" "$srclist.$comp".{bz2,xz}
+			rm -f "$srclist.$comp"{.lz4,} "$srclist.$comp".{bz2,xz}
 			continue
 		fi
-		save_file "$srclist.$comp"
+		save_file "$srclist.$comp".lz4
 		(cd "$basedir" &&
 			gensrclist $progress $flat $mapi \
 				${cachedir:+--cachedir "$cachedir"} \
@@ -428,7 +437,7 @@ if [ -z "$hashonly" ]; then
 		fi
 		compare_file
 		if [ -n "$maybe_unchanged" ]; then
-			hash=$(phashstuff "$srclist.$comp" "$srclist_.$comp")
+			hash=$(phashstuff "$srclist.$comp".lz4 "$srclist_.$comp")
 			if LC_ALL=C fgrep -qs -x "$hash" "$release"; then
 				Verbose "$srclist.$comp is unchanged"
 				continue
@@ -451,7 +460,7 @@ remove_uncompressed()
 {
 	if [ -n "$bz2only" ]; then
 		for comp in $components; do
-			rm -f "$pkglist.$comp" "$srclist.$comp"
+			rm -f "$pkglist.$comp"{.lz4,} "$srclist.$comp"{.lz4,}
 		done
 	fi
 }
@@ -527,8 +536,8 @@ if [ -z "$listonly" ]; then
 	Verbose -n 'Appending MD5Sum...'
 	for comp in $components; do
 		Verbose -n " $comp"
-		phash "$pkglist.$comp" "$pkglist_.$comp" "$release"
-		phash "$srclist.$comp" "$srclist_.$comp" "$release"
+		phash "$pkglist.$comp.lz4" "$pkglist_.$comp" "$release"
+		phash "$srclist.$comp.lz4" "$srclist_.$comp" "$release"
 		phash "$pkglist.$comp.bz2" "$pkglist_.$comp.bz2" "$release"
 		phash "$srclist.$comp.bz2" "$srclist_.$comp.bz2" "$release"
 		phash "$pkglist.$comp.xz" "$pkglist_.$comp.xz" "$release"
