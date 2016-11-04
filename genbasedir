@@ -341,21 +341,22 @@ compare_file()
 
 compress_file()
 {
-	local filesize halfsize pxz=
+	local filesize halfsize64K pxz=
 
 	rm -f "$1.xz" "$1.yz"
 	if [ -n "$make_xz" ]; then
 		filesize=$(lz4 -d <"$1".lz4 |wc -c)
-		if [ "$filesize" -ge $((4*8*1024*1024)) ]; then
+		if [ "$filesize" -ge $((32<<20)) ]; then
 			# The file is large enough (as compared to typical dictionary size).
 			# Note that .xz files can be concatenated, so it's nice to have
 			# 2-way parallel compression here.
 			pxz=1
 		fi
 		if [ -n "$pxz" ]; then
-			halfsize=$(($filesize/2))
-			lz4 -d <"$1".lz4 |dd bs=$halfsize count=1 iflag=fullblock 2>/dev/null |xz >"$1.xz" &
-			lz4 -d <"$1".lz4 |dd bs=$halfsize  skip=1 iflag=fullblock 2>/dev/null |xz >"$1.yz"
+			# The pipe size in Linux is 64K.
+			halfsize64K=$(($filesize>>17))
+			lz4 -d <"$1".lz4 |dd bs=64K count=$halfsize64K iflag=fullblock 2>/dev/null |xz >"$1.xz" &
+			lz4 -d <"$1".lz4 |dd bs=64K  skip=$halfsize64K iflag=fullblock 2>/dev/null |xz >"$1.yz"
 			wait $!
 			cat "$1.yz" >>"$1.xz"
 			rm -f "$1.yz"
