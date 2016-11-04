@@ -64,6 +64,7 @@ changelog_since=
 
 make_bz2=1
 make_xz=1
+make_zst=
 
 Fatal()
 {
@@ -155,7 +156,7 @@ phashstuff()
 }
 
 TEMP=`getopt -n $PROG -o vhs -l help,mapi,listonly,bz2only,hashonly,updateinfo:,bloat,no-scan,topdir:,sign,default-key:,progress,verbose,silent,oldhashfile,newhashfile,no-oldhashfile,no-newhashfile,partial,flat,create,origin:,label:,suite:,codename:,architectures:,description:,archive:,version:,architecture:,notautomatic:,cachedir:,useful-files:,changelog-since: \
-	-l bz2,no-bz2,xz,no-xz,maybe-unchanged -- "$@"` || USAGE
+	-l bz2,no-bz2,xz,no-xz,zst,zstd,no-zst,no-zstd,maybe-unchanged -- "$@"` || USAGE
 eval set -- "$TEMP"
 
 while :; do
@@ -231,6 +232,8 @@ while :; do
 		--no-bz2) shift; make_bz2= ;;
 		--xz) shift; make_xz=1 ;;
 		--no-xz) shift; make_xz= ;;
+		--zst|--zstd) shift; make_zst=1 ;;
+		--no-zst|--no-zstd) shift; make_zst= ;;
 		--maybe-unchanged) shift; maybe_unchanged=1 ;;
 		--) shift; break
 			;;
@@ -375,6 +378,11 @@ compress_file()
 			nice bzip2
 		fi >"$1".bz2 &
 	fi
+
+	rm -f "$1".zst
+	if [ -n "$make_zst" ]; then
+		lz4 -d <"$1".lz4 |zstd >"$1".zst &
+	fi
 }
 
 if [ -n "$cachedir" ]; then
@@ -391,8 +399,8 @@ if [ -z "$hashonly" ]; then
 		# pkglist
 		if [ ! -d $topdir/$distro/RPMS.$comp ]; then
 			# remove stale lists
-			rm -f "$pkglist.$comp"{.lz4,} "$pkglist.$comp".{bz2,xz}
-			rm -f "$srclist.$comp"{.lz4,} "$srclist.$comp".{bz2,xz}
+			rm -f "$pkglist.$comp"{.lz4,} "$pkglist.$comp".{bz2,xz,zst}
+			rm -f "$srclist.$comp"{.lz4,} "$srclist.$comp".{bz2,xz,zst}
 			continue
 		fi
 		Verbose -n " RPMS.$comp"
@@ -424,7 +432,7 @@ if [ -z "$hashonly" ]; then
 		# srclist
 		if [ ! -d $srctopdir/SRPMS.$comp ]; then
 			# remove stale lists
-			rm -f "$srclist.$comp"{.lz4,} "$srclist.$comp".{bz2,xz}
+			rm -f "$srclist.$comp"{.lz4,} "$srclist.$comp".{bz2,xz,zst}
 			continue
 		fi
 		save_file "$srclist.$comp".lz4
@@ -511,6 +519,9 @@ if [ -z "$listonly" ]; then
 			    -e "\#^ .* $pkglist_.$comp\(.xz\)\?\$#d" \
 			    -e "\#^ .* $srclist_.$comp\(.xz\)\?\$#d" \
 			    -e "\#^ .* $release_.$comp\(.xz\)\?\$#d" \
+			    -e "\#^ .* $pkglist_.$comp\(.zst\)\?\$#d" \
+			    -e "\#^ .* $srclist_.$comp\(.zst\)\?\$#d" \
+			    -e "\#^ .* $release_.$comp\(.zst\)\?\$#d" \
 			    -e "s/^\(Components:.*\) $comp\(.*\)\$/\1\2/" \
 				"$release.pre" > "$release.tmp"
 			mv -f "$release.tmp" "$release.pre"
@@ -543,6 +554,8 @@ if [ -z "$listonly" ]; then
 		phash "$srclist.$comp.bz2" "$srclist_.$comp.bz2" "$release"
 		phash "$pkglist.$comp.xz" "$pkglist_.$comp.xz" "$release"
 		phash "$srclist.$comp.xz" "$srclist_.$comp.xz" "$release"
+		phash "$pkglist.$comp.zst" "$pkglist_.$comp.zst" "$release"
+		phash "$srclist.$comp.zst" "$srclist_.$comp.zst" "$release"
 		phash "$release.$comp" "$release_.$comp" "$release"
 	done
 	Verbose ' done'
