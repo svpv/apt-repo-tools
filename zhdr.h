@@ -53,3 +53,39 @@ static void *zhdr(Header h, size_t& zsize)
     }
     return zblob;
 }
+
+// Compress a few headers in a single chunk.
+static void *zhdrv(std::vector<Header> const& hh, size_t& zsize)
+{
+    if (hh.size() == 1)
+	return zhdr(hh[0], zsize);
+    assert(hh.size() > 1);
+    std::vector<size_t> ss;
+    ss.reserve(hh.size());
+    size_t ssum = hh.size() * sizeof zhdr_magic;
+    for (size_t i = 0; i < hh.size(); i++) {
+	size_t size = headerSizeof(hh[i], HEADER_MAGIC_NO);
+	ss[i] = size;
+	ssum += size;
+    }
+    char *bb = (char *) malloc(ssum);
+    assert(bb);
+    char *pp = bb;
+    for (size_t i = 0; i < hh.size(); i++) {
+	void *blob = headerUnload(hh[i]);
+	assert(blob);
+	memcpy(pp, zhdr_magic, sizeof zhdr_magic);
+	memcpy(pp + sizeof zhdr_magic, blob, ss[i]);
+	free(blob);
+	pp += ss[i] + sizeof zhdr_magic;
+    }
+    assert(pp == bb + ssum);
+    zsize = LZ4F_compressFrameBound(ssum, NULL);
+    void *zblob = malloc(zsize);
+    assert(zblob);
+    zsize = LZ4F_compressFrame(zblob, zsize, bb, ssum, NULL);
+    assert(!LZ4F_isError(zsize));
+    free(bb);
+    // NB: zblob alloc size is suboptimal, see above
+    return zblob;
+}

@@ -321,6 +321,7 @@ int recCmp(const void *rec1_, const void *rec2_)
    return strcmp(rec1->rpm, rec2->rpm);
 }
 
+#include <vector>
 #include "zhdr.h"
 #include "slab.h"
 
@@ -542,6 +543,10 @@ int main(int argc, char ** argv)
 
    Slab slab;
 
+   // a few headers grouped by SOURCERPM
+   std::vector<Header> hh;
+   hh.reserve(128);
+
    for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
 
       if (progressBar)
@@ -562,16 +567,38 @@ int main(int argc, char ** argv)
 	 return 1;
       }
 
-      recs[nrec].rpm = rpm;
-      recs[nrec].srpm = slab.strdup(srpm);
-
       if (fullFileList || noScan) {
 	 // can process even now
 	 Header newHeader = processHeader(h, rpm);
-	 void *zblob = zhdr(newHeader, recs[nrec].zsize);
-	 headerFree(newHeader);
-	 recs[nrec].zblob = slab.put(zblob, recs[nrec].zsize);
-	 free(zblob);
+	 // see if there is a grouping (nrec works here more like reci:
+	 // recs[nrec].srpm must exist, except for the very beginning;
+	 // nrec is only increased after the group is finished)
+	 bool group = entry_cur && strcmp(recs[nrec].srpm, srpm) == 0;
+	 srpm = group ? recs[nrec].srpm : slab.strdup(srpm);
+	 // how to merge the group
+	 auto mergeGroup = [&]()
+	 {
+	    void *zblob = zhdrv(hh, recs[nrec].zsize);
+	    recs[nrec].zblob = slab.put(zblob, recs[nrec].zsize);
+	    free(zblob);
+	    for (size_t i = 0; i < hh.size(); i++)
+	       headerFree(hh[i]);
+	    hh.clear();
+	    nrec++;
+	 };
+	 // add the previous group to recs
+	 if (!group && hh.size())
+	    mergeGroup();
+	 // start a new group
+	 if (hh.size() == 0) {
+	    recs[nrec].rpm = rpm;
+	    recs[nrec].srpm = srpm;
+	 }
+	 // add to group
+	 hh.push_back(newHeader);
+	 // flush on the last iteration
+	 if (entry_cur == entry_no - 1)
+	    mergeGroup();
       }
       else {
 	 // need preprocessing
@@ -579,10 +606,15 @@ int main(int argc, char ** argv)
 	 findDepFiles(h, usefulFiles, RPMTAG_PROVIDENAME);
 	 findDepFiles(h, usefulFiles, RPMTAG_CONFLICTNAME);
 	 findDepFiles(h, usefulFiles, RPMTAG_OBSOLETENAME);
+	 // simple add
+	 bool group = nrec && strcmp(recs[nrec-1].srpm, srpm) == 0;
+	 srpm = group ? recs[nrec-1].srpm : slab.strdup(srpm);
+	 recs[nrec].rpm = rpm;
+	 recs[nrec].srpm = srpm;
+	 nrec++;
       }
 
       headerFree(h);
-      nrec++;
    }
 
    if (nrec > 1)
@@ -599,17 +631,31 @@ int main(int argc, char ** argv)
 	 continue;
       }
 
+      // merge writes directly to outfd
+      auto mergeGroup = [&]()
+      {
+	 size_t zsize;
+	 void *zblob = zhdrv(hh, zsize);
+	 Fwrite(zblob, zsize, 1, outfd);
+	 free(zblob);
+	 for (size_t i = 0; i < hh.size(); i++)
+	    headerFree(hh[i]);
+	 hh.clear();
+      };
+
       // full second pass, read the header again
       const char *rpm = recs[reci].rpm;
       Header h = readHeader(rpm);
       assert(h);
       Header newHeader = processHeader(h, rpm);
       headerFree(h);
-      size_t zsize;
-      void *zblob = zhdr(newHeader, zsize);
-      headerFree(newHeader);
-      Fwrite(zblob, zsize, 1, outfd);
-      free(zblob);
+      // grouping by the same slab pointer
+      bool group = reci && recs[reci-1].srpm == recs[reci].srpm;
+      if (!group && hh.size())
+	 mergeGroup();
+      hh.push_back(newHeader);
+      if (reci == nrec - 1)
+	 mergeGroup();
    }
 #if 0
    system("ps up $PPID");
