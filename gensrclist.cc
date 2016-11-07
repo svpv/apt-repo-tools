@@ -231,6 +231,10 @@ int main(int argc, char ** argv)
 
    CachedMD5 md5cache(string(arg_dir) + string(arg_suffix), "gensrclist");
 
+   const size_t N_MERGE = 8;
+   std::vector<Header> hh;
+   hh.reserve(N_MERGE);
+
    for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
 
       if (progressBar)
@@ -260,10 +264,16 @@ int main(int argc, char ** argv)
 
       auto zWrite = [&]()
       {
-	 size_t zsize;
-	 void *zblob = zhdr(newHeader, zsize);
-	 Fwrite(zblob, zsize, 1, outfd);
-	 free(zblob);
+	 hh.push_back(newHeader);
+	 if (hh.size() == N_MERGE || entry_cur == entry_no - 1) {
+	    size_t zsize;
+	    void *zblob = zhdrv(hh, zsize);
+	    Fwrite(zblob, zsize, 1, outfd);
+	    free(zblob);
+	    for (size_t i = 0; i < hh.size(); i++)
+	       headerFree(hh[i]);
+	    hh.clear();
+	 }
       };
 
       map<string, vector<const char *> >::const_iterator I = srpm2rpms.find(fname);
@@ -278,7 +288,6 @@ int main(int argc, char ** argv)
 	 zWrite();
       }
 
-      headerFree(newHeader);
       headerFree(h);
    } 
    
