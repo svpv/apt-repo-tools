@@ -260,7 +260,7 @@ int main(int argc, char ** argv)
 	    
       char md5[34];
       md5cache.MD5ForFile(fname, sb.st_mtime, md5);
-      addStringTag(newHeader, CRPMTAG_MD5, md5);
+      headerPutString(newHeader, CRPMTAG_MD5, md5);
 
       auto zWrite = [&]()
       {
@@ -280,8 +280,7 @@ int main(int argc, char ** argv)
       if (I != srpm2rpms.end()) {
 	 const vector<const char *> &rpmv = I->second;
 	 assert(rpmv.size() > 0);
-	 headerAddEntry(newHeader, CRPMTAG_BINARY, RPM_STRING_ARRAY_TYPE,
-		        &rpmv[0], rpmv.size());
+	 headerPutStringArray(newHeader, CRPMTAG_BINARY, (const char **) &rpmv[0], rpmv.size());
 	 zWrite();
       }
       else if (!mapi) { // write anyway

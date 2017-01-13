@@ -30,10 +30,9 @@ AC_CHECK_HEADER([rpm/rpmlib.h],,
 	[AC_MSG_ERROR([rpm headers not found])] )
 AC_CHECK_LIB([rpm],[main],,
 	[AC_MSG_ERROR([rpm library not found])] )
-AC_CHECK_LIB([rpmdb],[main],,
-	[AC_MSG_ERROR([rpmdb library not found])] )
 AC_CHECK_LIB([rpmio],[main],,
 	[AC_MSG_ERROR([rpmio library not found])] )
+AC_CHECK_FUNCS(headerFormat)
 
 AC_LANG_CPLUSPLUS
 AC_CHECK_HEADER([apt-pkg/configuration.h],,
