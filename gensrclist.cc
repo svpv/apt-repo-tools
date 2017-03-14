@@ -198,7 +198,7 @@ int main(int argc, char ** argv)
 #endif
 #endif
    
-   entry_no = scandir(buf, &dirEntries, selectRPMs, alphasort);
+   entry_no = scandir(buf, &dirEntries, selectRPMs, asciisort);
    if (entry_no < 0) { 
       cerr << "gensrclist: error opening directory " << buf << ": "
 	  << strerror(errno) << endl;

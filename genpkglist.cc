@@ -448,7 +448,7 @@ int main(int argc, char ** argv)
    string dirtag = "RPMS." + string(op_suf);
 
    if (chdir(rpmsdir.c_str()) != 0 ||
-	 (entry_no = scandir(".", &dirEntries, selectRPMs, alphasort)) < 0)
+	 (entry_no = scandir(".", &dirEntries, selectRPMs, asciisort)) < 0)
    {
       cerr << "genpkglist: " << rpmsdir << ": " << strerror(errno) << endl;
       return 1;

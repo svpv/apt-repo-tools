@@ -35,6 +35,11 @@ int selectRPMs(const struct dirent *ent)
    return (*b != '.' && endswith(b, ".rpm"));
 }
 
+static int asciisort(const struct dirent **a, const struct dirent **b)
+{
+    return strcmp((*a)->d_name, (*b)->d_name);
+}
+
 static
 void simpleProgress(unsigned int current, unsigned int total)
 {
