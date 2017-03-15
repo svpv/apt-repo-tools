@@ -94,6 +94,13 @@ Header readHeader(const char *path)
 }
 
 static
+bool stmatch(Header h, struct stat const& st)
+{
+   unsigned st_size = headerGetNumber(h, CRPMTAG_FILESIZE);
+   return (unsigned) st.st_size == st_size;
+}
+
+static
 void copyTag(Header h1, Header h2, raptTag tag)
 {
    rpmtd td = rpmtdNew();

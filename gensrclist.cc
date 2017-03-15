@@ -84,7 +84,58 @@ void usage()
    cerr << " --append        append to the source package file list, don't overwrite" << endl;
    cerr << " --progress      show a progress bar" << endl;
    cerr << " --cachedir=DIR  use a custom directory for package md5sum cache"<<endl;
+   cerr << " --prev-stdin    read previous output from stdin and use it as a cache" << endl;
 }
+
+class HdlistReader {
+   FD_t fd;
+   Header h;
+   const char *fname;
+   bool eof;
+public:
+   HdlistReader(FD_t fd) : fd(fd), h(NULL), fname(NULL), eof(false)
+   { }
+   ~HdlistReader()
+   {
+      headerFree(h);
+   }
+   Header find(const char *fn, struct stat const& st)
+   {
+      if (eof)
+	 return NULL;
+      int cmp = -1;
+      if (h) {
+	 cmp = strcmp(fname, fn);
+	 if (cmp < 0)
+	    headerFree(h);
+      }
+      while (cmp < 0) {
+	 h = headerRead(fd, HEADER_MAGIC_YES);
+	 if (h == NULL) {
+	    eof = 1;
+	    return NULL;
+	 }
+	 fname = headerGetString(h, CRPMTAG_FILENAME);
+	 if (fname == NULL) {
+	    cerr << "gensrclist: bad input from stdin" << endl;
+	    eof = 1;
+	    return NULL;
+	 }
+	 cmp = strcmp(fname, fn);
+	 if (cmp < 0)
+	    headerFree(h);
+      }
+      if (cmp > 0)
+	 return NULL;
+      Header ret = NULL;
+      if (stmatch(h, st))
+	 ret = h;
+      else
+	 headerFree(h);
+      h = NULL;
+      return ret;
+   }
+};
 
 #include "zhdr.h"
 
@@ -102,6 +153,7 @@ int main(int argc, char ** argv)
    char *arg_dir, *arg_suffix, *arg_srpmindex;
    const char *srcListSuffix = NULL;
    bool srcListAppend = false;
+   bool prevStdin = false;
 
    putenv((char *)"LC_ALL="); // Is this necessary yet (after i18n was supported)?
    for (i = 1; i < argc; i++) {
@@ -129,6 +181,8 @@ int main(int argc, char ** argv)
             cerr << "genpkglist: argument missing for option --cachedir"<<endl;
 	    exit(1);
 	 }
+      } else if (strcmp(argv[i], "--prev-stdin") == 0) {
+	 prevStdin = true;
       } else {
 	 break;
       }
@@ -229,6 +283,16 @@ int main(int argc, char ** argv)
       return 1;
    }
 
+   FD_t prevfd = NULL;
+   if (prevStdin) {
+      prevfd = fdDup(0);
+      if (Ferror(prevfd)) {
+	 cerr << "gensrclist: cannot open stdin" << endl;
+	 return 1;
+      }
+   }
+   HdlistReader prevhdlist(prevfd);
+
    CachedMD5 md5cache(string(arg_dir) + string(arg_suffix), "gensrclist");
 
    const size_t N_MERGE = 8;
@@ -248,19 +312,25 @@ int main(int argc, char ** argv)
 	 return 1;
       }
 
-      Header h = readHeader(fname);
-      if (h == NULL) {
+      Header h = NULL, newHeader = NULL;
+      if (prevStdin)
+	 newHeader = prevhdlist.find(fname, sb);
+      if (newHeader == NULL)
+	 h = readHeader(fname);
+      if (h == NULL && newHeader == NULL) {
 	 cerr << "gensrclist: " << fname << ": cannot read package header" << endl;
 	 return 1;
       }
 
-      Header newHeader = headerNew();
-      copyTags(h, newHeader, numTags, tags);
-      addAptTags(newHeader, srpmdir.c_str(), fname, sb.st_size);
-	    
-      char md5[34];
-      md5cache.MD5ForFile(fname, sb.st_mtime, md5);
-      headerPutString(newHeader, CRPMTAG_MD5, md5);
+      if (!newHeader) {
+	 newHeader = headerNew();
+	 copyTags(h, newHeader, numTags, tags);
+	 addAptTags(newHeader, srpmdir.c_str(), fname, sb.st_size);
+
+	 char md5[34];
+	 md5cache.MD5ForFile(fname, sb.st_mtime, md5);
+	 headerPutString(newHeader, CRPMTAG_MD5, md5);
+      }
 
       auto zWrite = [&]()
       {
