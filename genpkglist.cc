@@ -68,15 +68,47 @@ raptTag tags[] =  {
 int numTags = sizeof(tags) / sizeof(tags[0]);
 
 static
-void copyChangelog(Header h1, Header h2, long since)
+void copyChangelog(Header h1, Header h2, unsigned since)
 {
-    rpmTagVal copyTags[] = {
-        RPMTAG_CHANGELOGTIME,
-        RPMTAG_CHANGELOGNAME,
-        RPMTAG_CHANGELOGTEXT,
-        0
-    };
-    headerCopyTags(h1, h2, copyTags);
+   struct rpmtd_s times, names, texts;
+   if (headerGet(h1, RPMTAG_CHANGELOGTIME, &times, HEADERGET_MINMEM) != 1)
+      return;
+   if (headerGet(h1, RPMTAG_CHANGELOGNAME, &names, HEADERGET_MINMEM) != 1) {
+      rpmtdFreeData(&times);
+      return;
+   }
+   if (headerGet(h1, RPMTAG_CHANGELOGTEXT, &texts, HEADERGET_MINMEM) != 1) {
+      rpmtdFreeData(&times);
+      rpmtdFreeData(&names);
+      return;
+   }
+   if (times.count != names.count || names.count != texts.count) {
+exit: rpmtdFreeData(&times);
+      rpmtdFreeData(&names);
+      rpmtdFreeData(&texts);
+      return;
+   }
+
+   int n = times.count; // in
+   int m = 0; // out
+
+   if (n < 1)
+      goto exit;
+
+   unsigned *time = (unsigned *) times.data;
+
+   for (int i = 0; i < n; i++)
+      if (time[i] >= since)
+	 m++;
+      else
+	 break;
+   if (m < n)
+      m++;
+
+   headerPutUint32(h2, RPMTAG_CHANGELOGTIME, (const unsigned *) times.data, m);
+   headerPutStringArray(h2, RPMTAG_CHANGELOGNAME, (const char **) names.data, m);
+   headerPutStringArray(h2, RPMTAG_CHANGELOGTEXT, (const char **) texts.data, m);
+   goto exit;
 }
 
 
