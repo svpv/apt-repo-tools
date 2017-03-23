@@ -322,22 +322,26 @@ void usage()
 }
 
 
-struct rec {
-   const char *rpm;
+// A group is one or more headers, grouped by their source rpm, furthermore
+// in the right output order (adjacent, sorted by rpm filename), compressed
+// in a single chunk.  The overall genpkglist algorithm is to load the groups,
+// sort them by source rpm, and finally to spew them out.
+struct group {
+   const char *rpm; // the first rpm in a group, for collation
    const char *srpm;
    void *zblob;
    size_t zsize;
 };
 
 static
-int recCmp(const void *rec1_, const void *rec2_)
+int groupCmp(const void *g1_, const void *g2_)
 {
-   const struct rec *rec1 = (const struct rec *) rec1_;
-   const struct rec *rec2 = (const struct rec *) rec2_;
-   int cmp = strcmp(rec1->srpm, rec2->srpm);
+   const struct group *g1 = (const struct group *) g1_;
+   const struct group *g2 = (const struct group *) g2_;
+   int cmp = strcmp(g1->srpm, g2->srpm);
    if (cmp)
       return cmp;
-   return strcmp(rec1->rpm, rec2->rpm);
+   return strcmp(g1->rpm, g2->rpm);
 }
 
 #include <vector>
@@ -516,12 +520,6 @@ int main(int argc, char ** argv)
 	 usefulFiles.insert(line);
    }
 
-   struct rec *recs = NULL;
-   int nrec = 0;
-
-   if (entry_no > 0)
-      recs = new struct rec[entry_no];
-
    CachedMD5 md5cache(string(op_dir) + string(op_suf), "genpkglist");
 
    auto processHeader = [&](Header h, const char *rpm)
@@ -533,12 +531,13 @@ int main(int argc, char ** argv)
       Header newHeader = headerNew();
       assert(newHeader);
       copyTags(h, newHeader, numTags, tags);
-      if (!fullFileList)
-	 copyStrippedFileList(h, newHeader, usefulFiles);
-      else {
+      // !noscan means scanning, will strip later
+      if (fullFileList || !noScan) {
 	 copyTag(h, newHeader, RPMTAG_BASENAMES);
 	 copyTag(h, newHeader, RPMTAG_DIRNAMES);
 	 copyTag(h, newHeader, RPMTAG_DIRINDEXES);
+      } else {
+	 copyStrippedFileList(h, newHeader, usefulFiles);
       }
       if (changelog_since > 0)
 	 copyChangelog(h, newHeader, changelog_since);
@@ -562,10 +561,17 @@ int main(int argc, char ** argv)
 
    Slab slab;
 
+   struct group *groups = NULL;
+   int ngroup = 0;
+
+   if (entry_no > 0)
+      groups = new struct group[entry_no];
+
    // a few headers grouped by SOURCERPM
    std::vector<Header> hh;
    hh.reserve(128);
 
+   // load the groups
    for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
 
       if (progressBar)
@@ -586,73 +592,94 @@ int main(int argc, char ** argv)
 	 return 1;
       }
 
-      if (fullFileList || noScan) {
-	 // can process even now
-	 Header newHeader = processHeader(h, rpm);
-	 // see if there is a grouping (nrec works here more like reci:
-	 // recs[nrec].srpm must exist, except for the very beginning;
-	 // nrec is only increased after the group is finished)
-	 bool group = entry_cur && strcmp(recs[nrec].srpm, srpm) == 0;
-	 srpm = group ? recs[nrec].srpm : slab.strdup(srpm);
-	 // how to merge the group
-	 auto mergeGroup = [&]()
-	 {
-	    void *zblob = zhdrv(hh, recs[nrec].zsize);
-	    recs[nrec].zblob = slab.put(zblob, recs[nrec].zsize);
-	    free(zblob);
-	    for (size_t i = 0; i < hh.size(); i++)
-	       headerFree(hh[i]);
-	    hh.clear();
-	    nrec++;
-	 };
-	 // add the previous group to recs
-	 if (!group && hh.size())
-	    mergeGroup();
-	 // start a new group
-	 if (hh.size() == 0) {
-	    recs[nrec].rpm = rpm;
-	    recs[nrec].srpm = srpm;
-	 }
-	 // add to group
-	 hh.push_back(newHeader);
-	 // flush on the last iteration
-	 if (entry_cur == entry_no - 1)
-	    mergeGroup();
-      }
-      else {
-	 // need preprocessing
+      if (!(fullFileList || noScan)) {
 	 findDepFiles(h, usefulFiles, RPMTAG_REQUIRENAME);
 	 findDepFiles(h, usefulFiles, RPMTAG_PROVIDENAME);
 	 findDepFiles(h, usefulFiles, RPMTAG_CONFLICTNAME);
 	 findDepFiles(h, usefulFiles, RPMTAG_OBSOLETENAME);
-	 // simple add
-	 bool group = nrec && strcmp(recs[nrec-1].srpm, srpm) == 0;
-	 srpm = group ? recs[nrec-1].srpm : slab.strdup(srpm);
-	 recs[nrec].rpm = rpm;
-	 recs[nrec].srpm = srpm;
-	 nrec++;
       }
 
+      Header newHeader = processHeader(h, rpm);
+      // see if there is a grouping (ngroup works here more like gi:
+      // groups[ngroup].srpm must exist, except for the very beginning;
+      // ngroup is only increased after the group is finished)
+      bool group = entry_cur && strcmp(groups[ngroup].srpm, srpm) == 0;
+      srpm = group ? groups[ngroup].srpm : slab.strdup(srpm);
       headerFree(h);
+
+      // how to merge the group
+      auto mergeGroup = [&]()
+      {
+	 void *zblob = zhdrv(hh, groups[ngroup].zsize);
+	 groups[ngroup].zblob = slab.put(zblob, groups[ngroup].zsize);
+	 free(zblob);
+	 for (size_t i = 0; i < hh.size(); i++)
+	    headerFree(hh[i]);
+	 hh.clear();
+	 ngroup++;
+      };
+      // add the previous group to groups
+      if (!group && hh.size())
+	 mergeGroup();
+      // start a new group
+      if (hh.size() == 0) {
+	 groups[ngroup].rpm = rpm;
+	 groups[ngroup].srpm = srpm;
+      }
+      // add to group
+      hh.push_back(newHeader);
+      // flush on the last iteration
+      if (entry_cur == entry_no - 1)
+	 mergeGroup();
    }
 
-   if (nrec > 1)
-      qsort(recs, nrec, sizeof(recs[0]), recCmp);
+   if (ngroup > 1)
+      qsort(groups, ngroup, sizeof(groups[0]), groupCmp);
 
-   for (int reci = 0; reci < nrec; reci++) {
-
-      if (progressBar)
-	 simpleProgress(reci + 1, nrec);
+   for (int gi = 0; gi < ngroup; gi++) {
 
       if (fullFileList || noScan) {
 	 // only left to write
-	 Fwrite(recs[reci].zblob, recs[reci].zsize, 1, outfd);
+	 Fwrite(groups[gi].zblob, groups[gi].zsize, 1, outfd);
 	 continue;
       }
+
+      if (progressBar)
+	 simpleProgress(gi + 1, ngroup);
+
+      // need postprocessing, due to stripped file lists
+      // (it seems that they cannot be easily replaced)
+      auto postproc = [&](Header h)
+      {
+	 Header newHeader = headerNew();
+	 copyTags(h, newHeader, numTags, tags);
+	 raptTag moreTags[] = {
+	    // changelog
+	    RPMTAG_CHANGELOGTIME,
+	    RPMTAG_CHANGELOGNAME,
+	    RPMTAG_CHANGELOGTEXT,
+	    // apt tags
+	    CRPMTAG_DIRECTORY,
+	    CRPMTAG_FILENAME,
+	    CRPMTAG_FILESIZE,
+	    CRPMTAG_MD5,
+	    // info tags
+	    CRPMTAG_UPDATE_SUMMARY,
+	    CRPMTAG_UPDATE_URL,
+	    CRPMTAG_UPDATE_DATE,
+	    CRPMTAG_UPDATE_IMPORTANCE,
+	 };
+	 copyTags(h, newHeader, numTags, moreTags);
+	 copyStrippedFileList(h, newHeader, usefulFiles);
+	 headerFree(h);
+	 return newHeader;
+      };
 
       // merge writes directly to outfd
       auto mergeGroup = [&]()
       {
+	 for (size_t i = 0; i < hh.size(); i++)
+	    hh[i] = postproc(hh[i]);
 	 size_t zsize;
 	 void *zblob = zhdrv(hh, zsize);
 	 Fwrite(zblob, zsize, 1, outfd);
@@ -662,18 +689,12 @@ int main(int argc, char ** argv)
 	 hh.clear();
       };
 
-      // full second pass, read the header again
-      const char *rpm = recs[reci].rpm;
-      Header h = readHeader(rpm);
-      assert(h);
-      Header newHeader = processHeader(h, rpm);
-      headerFree(h);
-      // grouping by the same slab pointer
-      bool group = reci && recs[reci-1].srpm == recs[reci].srpm;
-      if (!group && hh.size())
+      // can coalesce a few groups, preferably with the same sourcerpm
+      bool group = gi && strcmp(groups[gi-1].srpm, groups[gi].srpm) == 0;
+      if (!group && hh.size() > 1)
 	 mergeGroup();
-      hh.push_back(newHeader);
-      if (reci == nrec - 1)
+      unzhdrv(hh, groups[gi].zblob, groups[gi].zsize);
+      if (gi == ngroup - 1)
 	 mergeGroup();
    }
 #if 0
