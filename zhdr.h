@@ -14,52 +14,11 @@ static unsigned char zhdr_magic[8] = {
     0x8e, 0xad, 0xe8, 0x01, 0x00, 0x00, 0x00, 0x00
 };
 
-// Small headers will be unloaded on the stack.
-#define ZHDR_MAX_STACK (32 << 10)
-
-static void *zhdr_do(Header h, char *buf, size_t size, size_t& zsize)
-{
-    void *blob = headerUnload(h);
-    assert(blob);
-    memcpy(buf, zhdr_magic, sizeof zhdr_magic);
-    memcpy(buf + sizeof zhdr_magic, blob, size);
-    free(blob);
-    size += sizeof zhdr_magic;
-    zsize = LZ4F_compressFrameBound(size, NULL);
-    void *zblob = malloc(zsize);
-    assert(zblob);
-    zsize = LZ4F_compressFrame(zblob, zsize, buf, size, NULL);
-    assert(!LZ4F_isError(zsize));
-    // NB: zblob alloc size is suboptimal; the caller may want
-    // to reallocate it or, better yet, to put it on a slab.
-    return zblob;
-}
-
-// Compress with magic, to be written to pkglist.
-static void *zhdr(Header h, size_t& zsize)
-{
-    size_t size = headerSizeof(h, HEADER_MAGIC_NO);
-    assert(size > 0);
-    void *zblob;
-    if (size + sizeof zhdr_magic > ZHDR_MAX_STACK) {
-	char *buf = (char *) malloc(size + sizeof zhdr_magic);
-	assert(buf);
-	zblob = zhdr_do(h, buf, size, zsize);
-	free(buf);
-    }
-    else {
-	char buf[size + sizeof zhdr_magic];
-	zblob = zhdr_do(h, buf, size, zsize);
-    }
-    return zblob;
-}
-
 // Compress a few headers in a single chunk.
+// Headers have magic, to be written to pkglist.
 static void *zhdrv(std::vector<Header> const& hh, size_t& zsize)
 {
-    if (hh.size() == 1)
-	return zhdr(hh[0], zsize);
-    assert(hh.size() > 1);
+    assert(hh.size() >= 1);
     std::vector<size_t> ss;
     ss.reserve(hh.size());
     size_t ssum = hh.size() * sizeof zhdr_magic;
@@ -80,12 +39,61 @@ static void *zhdrv(std::vector<Header> const& hh, size_t& zsize)
 	pp += ss[i] + sizeof zhdr_magic;
     }
     assert(pp == bb + ssum);
-    zsize = LZ4F_compressFrameBound(ssum, NULL);
+    LZ4F_preferences_t pref;
+    memset(&pref, 0, sizeof pref);
+    pref.frameInfo.blockSizeID = LZ4F_max256KB;
+    pref.frameInfo.contentSize = ssum;
+    zsize = LZ4F_compressFrameBound(ssum, &pref);
     void *zblob = malloc(zsize);
     assert(zblob);
-    zsize = LZ4F_compressFrame(zblob, zsize, bb, ssum, NULL);
+    zsize = LZ4F_compressFrame(zblob, zsize, bb, ssum, &pref);
     assert(!LZ4F_isError(zsize));
     free(bb);
-    // NB: zblob alloc size is suboptimal, see above
+    // NB: zblob alloc size is suboptimal; the caller may want
+    // to reallocate it or, better yet, to put it on a slab.
     return zblob;
+}
+
+#include <arpa/inet.h>
+
+// Decompress the headers.
+static void unzhdrv(std::vector<Header>& hh, const void *zblob, size_t zsize)
+{
+    LZ4F_decompressionContext_t dctx;
+    size_t ret = LZ4F_createDecompressionContext(&dctx, LZ4F_VERSION);
+    assert(!LZ4F_isError(ret));
+    LZ4F_frameInfo_t frameInfo;
+    size_t zread = zsize;
+    ret = LZ4F_getFrameInfo(dctx, &frameInfo, zblob, &zread);
+    assert(!LZ4F_isError(ret));
+    zblob = (char *) zblob + zread, zsize -= zread;
+    size_t blobsize = frameInfo.contentSize;
+    assert(blobsize);
+    void *blob = malloc(blobsize);
+    assert(blob);
+    zread = zsize;
+    // The docs say that LZ4F_decompress should be called in a loop.  However,
+    // this is only useful for piecemeal decompression.  LZ4F_decompress also
+    // seems to be able to decompress the whole thing at once.
+    ret = LZ4F_decompress(dctx, blob, &blobsize, zblob, &zread, NULL);
+    assert(ret == 0);
+    assert(blobsize == frameInfo.contentSize);
+    char *p = (char *) blob;
+    do {
+	assert(blobsize > sizeof zhdr_magic);
+	assert(memcmp(p, zhdr_magic, sizeof zhdr_magic) == 0);
+	p += sizeof zhdr_magic, blobsize -= sizeof zhdr_magic;
+	Header h = headerImport(p, 0, HEADERIMPORT_COPY | HEADERIMPORT_FAST);
+	assert(h);
+	hh.push_back(h);
+	// headerSizeof won't work here
+	unsigned *ei = (unsigned *) p;
+	unsigned il = ntohl(ei[0]);
+	unsigned dl = ntohl(ei[1]);
+	size_t hsize = 8 + 16 * il + dl;
+	assert(hsize <= blobsize);
+	p += hsize, blobsize -= hsize;
+    } while (blobsize);
+    free(blob);
+    LZ4F_freeDecompressionContext(dctx);
 }
