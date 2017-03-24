@@ -522,7 +522,7 @@ int main(int argc, char ** argv)
 
    CachedMD5 md5cache(string(op_dir) + string(op_suf), "genpkglist");
 
-   auto processHeader = [&](Header h, const char *rpm)
+   auto processHeader = [&](Header h, const char *rpm, bool bloat)
    {
       struct stat sb;
       int statrc = stat(rpm, &sb);
@@ -531,13 +531,12 @@ int main(int argc, char ** argv)
       Header newHeader = headerNew();
       assert(newHeader);
       copyTags(h, newHeader, numTags, tags);
-      // !noscan means scanning, will strip later
-      if (fullFileList || !noScan) {
+      if (!bloat)
+	 copyStrippedFileList(h, newHeader, usefulFiles);
+      else {
 	 copyTag(h, newHeader, RPMTAG_BASENAMES);
 	 copyTag(h, newHeader, RPMTAG_DIRNAMES);
 	 copyTag(h, newHeader, RPMTAG_DIRINDEXES);
-      } else {
-	 copyStrippedFileList(h, newHeader, usefulFiles);
       }
       if (changelog_since > 0)
 	 copyChangelog(h, newHeader, changelog_since);
@@ -597,9 +596,18 @@ int main(int argc, char ** argv)
 	 findDepFiles(h, usefulFiles, RPMTAG_PROVIDENAME);
 	 findDepFiles(h, usefulFiles, RPMTAG_CONFLICTNAME);
 	 findDepFiles(h, usefulFiles, RPMTAG_OBSOLETENAME);
+
+	 // headers will be reloaded in the second pass, make simple 1-element
+	 // groups (actual grouping is only detected to avoid slab.strdup)
+	 bool group = ngroup && strcmp(groups[ngroup-1].srpm, srpm) == 0;
+	 srpm = group ? groups[ngroup-1].srpm : slab.strdup(srpm);
+	 headerFree(h);
+	 groups[ngroup++] = (struct group) { .rpm = rpm, .srpm = srpm,
+					     .zblob = NULL, .zsize = 0 };
+	 continue;
       }
 
-      Header newHeader = processHeader(h, rpm);
+      Header newHeader = processHeader(h, rpm, fullFileList);
       // see if there is a grouping (ngroup works here more like gi:
       // groups[ngroup].srpm must exist, except for the very beginning;
       // ngroup is only increased after the group is finished)
@@ -647,7 +655,7 @@ int main(int argc, char ** argv)
       if (progressBar)
 	 simpleProgress(gi + 1, ngroup);
 
-      // need postprocessing, due to stripped file lists
+      // may need postprocessing, due to stripped file lists
       // (it seems that they cannot be easily replaced)
       auto postproc = [&](Header h)
       {
@@ -678,8 +686,6 @@ int main(int argc, char ** argv)
       // merge writes directly to outfd
       auto mergeGroup = [&]()
       {
-	 for (size_t i = 0; i < hh.size(); i++)
-	    hh[i] = postproc(hh[i]);
 	 size_t zsize;
 	 void *zblob = zhdrv(hh, zsize);
 	 Fwrite(zblob, zsize, 1, outfd);
@@ -693,7 +699,25 @@ int main(int argc, char ** argv)
       bool group = gi && strcmp(groups[gi-1].srpm, groups[gi].srpm) == 0;
       if (!group && hh.size() > 1)
 	 mergeGroup();
-      unzhdrv(hh, groups[gi].zblob, groups[gi].zsize);
+      if (groups[gi].zblob == NULL) {
+	 const char *rpm = groups[gi].rpm;
+	 Header h = readHeader(rpm);
+	 if (h == NULL) {
+	    cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
+	    return 1;
+	 }
+	 Header newHeader = processHeader(h, rpm, fullFileList);
+	 headerFree(h);
+	 hh.push_back(newHeader);
+      } else {
+	 // this branch is not taken yet
+	 bool pp = false;
+	 assert(pp);
+	 size_t i = hh.size();
+	 unzhdrv(hh, groups[gi].zblob, groups[gi].zsize);
+	 for (; i < hh.size(); i++)
+	    hh[i] = postproc(hh[i]);
+      }
       if (gi == ngroup - 1)
 	 mergeGroup();
    }
