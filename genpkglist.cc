@@ -319,6 +319,7 @@ void usage()
    cerr << "                 save package changelogs; copy changelog entries" <<endl;
    cerr << "                 newer than seconds since the Epoch, and also" <<endl;
    cerr << "                 one preceding entry (if any)" <<endl;
+   cerr << " --prev-stdin    read previous (bloated) output from stdin and use it as a cache" << endl;
 }
 
 
@@ -366,6 +367,7 @@ int main(int argc, char ** argv)
    bool progressBar = false;
    const char *pkgListSuffix = NULL;
    bool pkgListAppend = false;
+   bool prevStdin = false;
    
    putenv((char *)"LC_ALL="); // Is this necessary yet (after i18n was supported)?
    for (i = 1; i < argc; i++) {
@@ -425,6 +427,8 @@ int main(int argc, char ** argv)
             cerr << "genpkglist: argument missing for option --cachedir"<<endl;
 	    exit(1);
 	 }
+      } else if (strcmp(argv[i], "--prev-stdin") == 0) {
+	 prevStdin = true;
       } else {
 	 break;
       }
@@ -520,6 +524,15 @@ int main(int argc, char ** argv)
 	 usefulFiles.insert(line);
    }
 
+   FD_t prevfd = NULL;
+   if (prevStdin) {
+      prevfd = fdDup(0);
+      if (Ferror(prevfd)) {
+	 cerr << "genpkglist: cannot open stdin" << endl;
+	 return 1;
+      }
+   }
+
    CachedMD5 md5cache(string(op_dir) + string(op_suf), "genpkglist");
 
    auto processHeader = [&](Header h, const char *rpm, bool bloat)
@@ -555,6 +568,35 @@ int main(int argc, char ** argv)
 	 if (srpm && name)
 	    fprintf(idxfp, "%s %s\n", srpm, name);
       }
+      headerFree(h);
+      return newHeader;
+   };
+
+   // may need postprocessing, due to stripped file lists
+   // (it seems that they cannot be easily replaced)
+   auto postproc = [&](Header h)
+   {
+      Header newHeader = headerNew();
+      copyTags(h, newHeader, numTags, tags);
+      raptTag moreTags[] = {
+	 // changelog
+	 RPMTAG_CHANGELOGTIME,
+	 RPMTAG_CHANGELOGNAME,
+	 RPMTAG_CHANGELOGTEXT,
+	 // apt tags
+	 CRPMTAG_DIRECTORY,
+	 CRPMTAG_FILENAME,
+	 CRPMTAG_FILESIZE,
+	 CRPMTAG_MD5,
+	 // info tags
+	 CRPMTAG_UPDATE_SUMMARY,
+	 CRPMTAG_UPDATE_URL,
+	 CRPMTAG_UPDATE_DATE,
+	 CRPMTAG_UPDATE_IMPORTANCE,
+      };
+      copyTags(h, newHeader, numTags, moreTags);
+      copyStrippedFileList(h, newHeader, usefulFiles);
+      headerFree(h);
       return newHeader;
    };
 
@@ -563,69 +605,84 @@ int main(int argc, char ** argv)
    struct group *groups = NULL;
    int ngroup = 0;
 
-   if (entry_no > 0)
-      groups = new struct group[entry_no];
+   if (entry_no > 0) {
+      groups = new struct group[entry_no+1];
+      groups[0].srpm = NULL;
+   }
 
    // a few headers grouped by SOURCERPM
    std::vector<Header> hh;
    hh.reserve(128);
 
-   // load the groups
-   for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
+   // how to merge a group
+   auto mergeGroup = [&]()
+   {
+      void *zblob = zhdrv(hh, groups[ngroup].zsize);
+      groups[ngroup].zblob = slab.put(zblob, groups[ngroup].zsize);
+      free(zblob);
+      for (size_t i = 0; i < hh.size(); i++)
+	 headerFree(hh[i]);
+      hh.clear();
+      groups[++ngroup].srpm = NULL;
+   };
 
-      if (progressBar)
-	 simpleProgress(entry_cur + 1, entry_no);
+   // Sometimes the merge has to be forced, to keep the headers
+   // within the group adjacent.  For example, stdin can present
+   // subpackages (a,c) while dirEntries have (a,b,c). (a,c) then
+   // cannot be loaded as a group: (a) has to be forced into a group
+   // of its own, so that (b) can be inserted between (a) and (c).
+   auto forceMerge = [&]()
+   {
+      if (hh.size())
+	 mergeGroup();
+   };
 
-      const char *rpm = dirEntries[entry_cur]->d_name;
-
-      Header h = readHeader(rpm);
-      if (h == NULL) {
-	 cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
-	 return 1;
-      }
-
-      const char *srpm = headerGetString(h, RPMTAG_SOURCERPM);
-      if (srpm == NULL) {
-	 cerr << "genpkglist: " << rpm << ": invalid binary package" << endl;
-	 headerFree(h);
-	 return 1;
-      }
-
+   // what to do with a header when it's loaded
+   auto loaded = [&](Header h, const char *rpm, const char *srpm, bool fromStdin)
+   {
       if (!(fullFileList || noScan)) {
 	 findDepFiles(h, usefulFiles, RPMTAG_REQUIRENAME);
 	 findDepFiles(h, usefulFiles, RPMTAG_PROVIDENAME);
 	 findDepFiles(h, usefulFiles, RPMTAG_CONFLICTNAME);
 	 findDepFiles(h, usefulFiles, RPMTAG_OBSOLETENAME);
+      }
 
-	 // headers will be reloaded in the second pass, make simple 1-element
-	 // groups (actual grouping is only detected to avoid slab.strdup)
+      // Try to avoid double compression (recompression): only keep the header
+      // if it is possible to compress it now and then output the compressed
+      // chunk as is.  The exception is when the header is read from stdin:
+      // need to keep it anyway.
+      if (!(fullFileList || noScan || fromStdin)) {
+	 // The headers will be reloaded on the second pass; make simple
+	 // 1-element groups (actual grouping is only detected to avoid
+	 // slab.strdup).
 	 bool group = ngroup && strcmp(groups[ngroup-1].srpm, srpm) == 0;
 	 srpm = group ? groups[ngroup-1].srpm : slab.strdup(srpm);
 	 headerFree(h);
 	 groups[ngroup++] = (struct group) { .rpm = rpm, .srpm = srpm,
 					     .zblob = NULL, .zsize = 0 };
-	 continue;
+	 return;
       }
 
-      Header newHeader = processHeader(h, rpm, fullFileList);
       // see if there is a grouping (ngroup works here more like gi:
       // groups[ngroup].srpm must exist, except for the very beginning;
       // ngroup is only increased after the group is finished)
-      bool group = entry_cur && strcmp(groups[ngroup].srpm, srpm) == 0;
+      bool group =   groups[ngroup].srpm &&
+	      strcmp(groups[ngroup].srpm, srpm) == 0;
       srpm = group ? groups[ngroup].srpm : slab.strdup(srpm);
-      headerFree(h);
 
-      // how to merge the group
-      auto mergeGroup = [&]()
-      {
-	 void *zblob = zhdrv(hh, groups[ngroup].zsize);
-	 groups[ngroup].zblob = slab.put(zblob, groups[ngroup].zsize);
-	 free(zblob);
-	 for (size_t i = 0; i < hh.size(); i++)
-	    headerFree(hh[i]);
-	 hh.clear();
-	 ngroup++;
-      };
+      if (!fromStdin) {
+	 // either fullFileList or noScan
+	 if (!fullFileList)
+	    assert(noScan);
+	 h = processHeader(h, rpm, fullFileList);
+      } else if (!fullFileList && noScan) {
+	 // Assume the input from stdin is bloated; strip it now unless
+	 // fullFileList is required, and further if --no-scan option
+	 // has been given; otherwise, the bloated header will be frozen
+	 // as is (and perhaps stripped later).
+	 h = postproc(h);
+      }
+
       // add the previous group to groups
       if (!group && hh.size())
 	 mergeGroup();
@@ -635,10 +692,128 @@ int main(int argc, char ** argv)
 	 groups[ngroup].srpm = srpm;
       }
       // add to group
-      hh.push_back(newHeader);
-      // flush on the last iteration
-      if (entry_cur == entry_no - 1)
-	 mergeGroup();
+      hh.push_back(h);
+   };
+
+   // load the groups
+   if (prevStdin) {
+      // Will use d_off to indicate that a header has already been
+      // read from stdin.
+      for (entry_cur = 0; entry_cur < entry_no; entry_cur++)
+	 dirEntries[entry_cur]->d_off = 0;
+      Header h;
+      int previx = -1;
+      int progress = 1;
+
+      // load from stdin
+      while ((h = headerRead(prevfd, HEADER_MAGIC_YES))) {
+	 if (progressBar)
+	    simpleProgress(progress, entry_no);
+
+	 const char *rpm = headerGetString(h, CRPMTAG_FILENAME);
+	 if (rpm == NULL) {
+	    cerr << "genpkglist: bad input from stdin (rpm)" << endl;
+	    headerFree(h);
+	    break;
+	 }
+
+	 // check if the rpm is among the directory entries
+	 auto direntCmp = [](const void *a, const void *b)
+	 {
+	    struct dirent *de1 = *(struct dirent **) a;
+	    struct dirent *de2 = *(struct dirent **) b;
+	    return strcmp(de1->d_name, de2->d_name);
+	 };
+	 struct dirent key_s, *key = &key_s;
+	 size_t len = strlen(rpm);
+	 if (len >= sizeof key->d_name) {
+	    cerr << "genpkglist: bad input from stdin (len)" << endl;
+	    headerFree(h);
+	    break;
+	 }
+	 memcpy(key->d_name, rpm, len + 1);
+	 void *found = bsearch(&key, dirEntries, entry_no, sizeof dirEntries[0], direntCmp);
+	 if (!found) {
+	    headerFree(h);
+	    continue;
+	 }
+	 rpm = (*((struct dirent **) found))->d_name;
+	 struct stat st;
+	 if (stat(rpm, &st)) {
+	    cerr << "genpkglist: " << rpm << ": stat failed" << endl;
+	    return 1;
+	 }
+	 if (!stmatch(h, st)) {
+	    headerFree(h);
+	    forceMerge();
+	    continue;
+	 }
+	 int ix = (struct dirent **) found - dirEntries;
+	 if (ix != previx + 1)
+	    forceMerge();
+	 previx = ix;
+	 const char *srpm = headerGetString(h, RPMTAG_SOURCERPM);
+	 if (srpm == NULL) {
+	    cerr << "genpkglist: bad input from stdin (srpm)" << endl;
+	    headerFree(h);
+	    break;
+	 }
+	 progress++;
+	 dirEntries[ix]->d_off = 1;
+	 loaded(h, rpm, srpm, true);
+      }
+      forceMerge();
+
+      // load the rest from fs
+      for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
+	 if (dirEntries[entry_cur]->d_off) {
+	    forceMerge();
+	    continue;
+	 }
+	 if (progressBar)
+	    simpleProgress(progress, entry_no);
+
+	 const char *rpm = dirEntries[entry_cur]->d_name;
+	 Header h = readHeader(rpm);
+	 if (h == NULL) {
+	    cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
+	    return 1;
+	 }
+	 const char *srpm = headerGetString(h, RPMTAG_SOURCERPM);
+	 if (srpm == NULL) {
+	    cerr << "genpkglist: " << rpm << ": invalid binary package" << endl;
+	    headerFree(h);
+	    return 1;
+	 }
+	 progress++;
+	 loaded(h, rpm, srpm, false);
+      }
+      // progress should be part of loop control, which isn't possible in this case
+      progress--;
+      assert(progress == entry_no);
+      forceMerge();
+
+   } else {
+      // load everything from fs
+      for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
+	 if (progressBar)
+	    simpleProgress(entry_cur + 1, entry_no);
+
+	 const char *rpm = dirEntries[entry_cur]->d_name;
+	 Header h = readHeader(rpm);
+	 if (h == NULL) {
+	    cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
+	    return 1;
+	 }
+	 const char *srpm = headerGetString(h, RPMTAG_SOURCERPM);
+	 if (srpm == NULL) {
+	    cerr << "genpkglist: " << rpm << ": invalid binary package" << endl;
+	    headerFree(h);
+	    return 1;
+	 }
+	 loaded(h, rpm, srpm, false);
+      }
+      forceMerge();
    }
 
    if (ngroup > 1)
@@ -654,34 +829,6 @@ int main(int argc, char ** argv)
 
       if (progressBar)
 	 simpleProgress(gi + 1, ngroup);
-
-      // may need postprocessing, due to stripped file lists
-      // (it seems that they cannot be easily replaced)
-      auto postproc = [&](Header h)
-      {
-	 Header newHeader = headerNew();
-	 copyTags(h, newHeader, numTags, tags);
-	 raptTag moreTags[] = {
-	    // changelog
-	    RPMTAG_CHANGELOGTIME,
-	    RPMTAG_CHANGELOGNAME,
-	    RPMTAG_CHANGELOGTEXT,
-	    // apt tags
-	    CRPMTAG_DIRECTORY,
-	    CRPMTAG_FILENAME,
-	    CRPMTAG_FILESIZE,
-	    CRPMTAG_MD5,
-	    // info tags
-	    CRPMTAG_UPDATE_SUMMARY,
-	    CRPMTAG_UPDATE_URL,
-	    CRPMTAG_UPDATE_DATE,
-	    CRPMTAG_UPDATE_IMPORTANCE,
-	 };
-	 copyTags(h, newHeader, numTags, moreTags);
-	 copyStrippedFileList(h, newHeader, usefulFiles);
-	 headerFree(h);
-	 return newHeader;
-      };
 
       // merge writes directly to outfd
       auto mergeGroup = [&]()
@@ -706,18 +853,19 @@ int main(int argc, char ** argv)
 	    cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
 	    return 1;
 	 }
-	 Header newHeader = processHeader(h, rpm, fullFileList);
-	 headerFree(h);
-	 hh.push_back(newHeader);
+	 h = processHeader(h, rpm, fullFileList);
+	 hh.push_back(h);
       } else {
-	 // this branch is not taken yet
-	 bool pp = false;
-	 assert(pp);
+	 bool pp = !(fullFileList || noScan);
+	 // this branch is only taken when headers are read from stdin
+	 // and need postprocessing
+	 assert(prevStdin && pp);
 	 size_t i = hh.size();
 	 unzhdrv(hh, groups[gi].zblob, groups[gi].zsize);
-	 for (; i < hh.size(); i++)
+	 for (; pp && i < hh.size(); i++)
 	    hh[i] = postproc(hh[i]);
       }
+      // flush on the last iteration
       if (gi == ngroup - 1)
 	 mergeGroup();
    }
