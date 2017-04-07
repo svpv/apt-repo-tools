@@ -312,6 +312,7 @@ void usage()
    cerr << " --bloat         do not strip the package file list. Needed for some" << endl;
    cerr << "                 distributions that use non-automatically generated" << endl;
    cerr << "                 file dependencies" << endl;
+   cerr << " --bloater       generate both pkglist.comp and pkglist.comp+bloat" << endl;
    cerr << " --append        append to the package file list, don't overwrite" << endl;
    cerr << " --progress      show a progress bar" << endl;
    cerr << " --cachedir=DIR  use a custom directory for package md5sum cache"<<endl;
@@ -363,6 +364,7 @@ int main(int argc, char ** argv)
    int i;
    long /* time_t */ changelog_since = 0;
    bool fullFileList = false;
+   bool bloater = false;
    bool noScan = false;
    bool progressBar = false;
    const char *pkgListSuffix = NULL;
@@ -405,6 +407,8 @@ int main(int argc, char ** argv)
 	 }
       } else if (strcmp(argv[i], "--bloat") == 0) {
 	 fullFileList = true;
+      } else if (strcmp(argv[i], "--bloater") == 0) {
+	 bloater = true;
       } else if (strcmp(argv[i], "--no-scan") == 0) {
 	 noScan = true;
       } else if (strcmp(argv[i], "--progress") == 0) {
@@ -447,6 +451,10 @@ int main(int argc, char ** argv)
    }
    if (argc != i) {
       usage();
+   }
+   if (fullFileList && bloater) {
+      cerr << "genpkglist: --bloat and --bloater should not be used simultaneously" << endl;
+      return 1;
    }
    
    map<string,UpdateInfo> updateInfo;
@@ -494,11 +502,15 @@ int main(int argc, char ** argv)
       return 1;
    }
 
-   if (pkgListSuffix != NULL)
+   std::string bloater_path;
+   if (pkgListSuffix != NULL) {
+      bloater_path = pkglist_path + "/base/pkglist." + pkgListSuffix + "+bloat" ZHDR_SUFFIX;
       pkglist_path = pkglist_path + "/base/pkglist." + pkgListSuffix + ZHDR_SUFFIX;
-   else
+   } else {
+      bloater_path = pkglist_path + "/base/pkglist." + op_suf + "+bloat" ZHDR_SUFFIX;
       pkglist_path = pkglist_path + "/base/pkglist." + op_suf + ZHDR_SUFFIX;
-   
+   }
+
    FD_t outfd;
    if (pkgListAppend == true && FileExists(pkglist_path)) {
       outfd = Fopen(pkglist_path.c_str(), "a");
@@ -510,6 +522,21 @@ int main(int argc, char ** argv)
       cerr << "genpkglist: error creating file " << pkglist_path << ": "
 	  << strerror(errno) << endl;
       return 1;
+   }
+
+   FD_t bloaterfd = NULL;
+   if (bloater) {
+      if (pkgListAppend == true && FileExists(bloater_path)) {
+	 bloaterfd = Fopen(bloater_path.c_str(), "a");
+      } else {
+	 unlink(bloater_path.c_str());
+	 bloaterfd = Fopen(bloater_path.c_str(), "w+");
+      }
+      if (!bloaterfd) {
+	 cerr << "genpkglist: error creating file " << bloater_path << ": "
+	     << strerror(errno) << endl;
+	 return 1;
+      }
    }
 
    set<string> usefulFiles;
@@ -651,7 +678,7 @@ int main(int argc, char ** argv)
       // if it is possible to compress it now and then output the compressed
       // chunk as is.  The exception is when the header is read from stdin:
       // need to keep it anyway.
-      if (!(fullFileList || noScan || fromStdin)) {
+      if (!(fullFileList || bloater || noScan || fromStdin)) {
 	 // The headers will be reloaded on the second pass; make simple
 	 // 1-element groups (actual grouping is only detected to avoid
 	 // slab.strdup).
@@ -671,13 +698,13 @@ int main(int argc, char ** argv)
       srpm = group ? groups[ngroup].srpm : slab.strdup(srpm);
 
       if (!fromStdin) {
-	 // either fullFileList or noScan
-	 if (!fullFileList)
+	 // either bloat/bloater or noScan
+	 if (!(fullFileList || bloater))
 	    assert(noScan);
-	 h = processHeader(h, rpm, fullFileList);
-      } else if (!fullFileList && noScan) {
+	 h = processHeader(h, rpm, fullFileList || bloater);
+      } else if (!(fullFileList || bloater) && noScan) {
 	 // Assume the input from stdin is bloated; strip it now unless
-	 // fullFileList is required, and further if --no-scan option
+	 // bloat/bloater is required, and further if --no-scan option
 	 // has been given; otherwise, the bloated header will be frozen
 	 // as is (and perhaps stripped later).
 	 h = postproc(h);
@@ -821,7 +848,10 @@ int main(int argc, char ** argv)
 
    for (int gi = 0; gi < ngroup; gi++) {
 
-      if (fullFileList || noScan) {
+      if (bloater) {
+	 Fwrite(groups[gi].zblob, groups[gi].zsize, 1, bloaterfd);
+	 // proceed
+      } else if (fullFileList || noScan) {
 	 // only left to write
 	 Fwrite(groups[gi].zblob, groups[gi].zsize, 1, outfd);
 	 continue;
@@ -853,13 +883,14 @@ int main(int argc, char ** argv)
 	    cerr << "genpkglist: " << rpm << ": cannot read package header" << endl;
 	    return 1;
 	 }
+	 assert(!bloater);
 	 h = processHeader(h, rpm, fullFileList);
 	 hh.push_back(h);
       } else {
-	 bool pp = !(fullFileList || noScan);
+	 bool pp = !(fullFileList || noScan) || bloater;
 	 // this branch is only taken when headers are read from stdin
-	 // and need postprocessing
-	 assert(prevStdin && pp);
+	 // and need postprocessing, or when --bloater mode is enabled
+	 assert((prevStdin || bloater) && pp);
 	 size_t i = hh.size();
 	 unzhdrv(hh, groups[gi].zblob, groups[gi].zsize);
 	 for (; pp && i < hh.size(); i++)
