@@ -293,6 +293,11 @@ int main(int argc, char ** argv)
 
       const char *fname = dirEntries[entry_cur]->d_name;
 
+      // Skip this srpm if doesn't have corresponding rpms.
+      map<string, vector<const char *> >::const_iterator I = srpm2rpms.find(fname);
+      if (I == srpm2rpms.end() && mapi)
+	 continue;
+
       struct stat sb;
       if (stat(fname, &sb) < 0) {
 	 cerr << "gensrclist: " << fname << ": " << strerror(errno) << endl;
@@ -317,31 +322,25 @@ int main(int argc, char ** argv)
 	 char md5[34];
 	 md5cache.MD5ForFile(fname, sb.st_mtime, md5);
 	 headerPutString(newHeader, CRPMTAG_MD5, md5);
-      }
 
-      auto zWrite = [&]()
-      {
-	 hh.push_back(newHeader);
-	 if (hh.size() == N_MERGE || entry_cur == entry_no - 1) {
-	    size_t zsize;
-	    void *zblob = zhdrv(hh, zsize);
-	    Fwrite(zblob, zsize, 1, outfd);
-	    free(zblob);
-	    for (size_t i = 0; i < hh.size(); i++)
-	       headerFree(hh[i]);
-	    hh.clear();
+	 // Assume the set of rpms doesn't change across invocations,
+	 // otherwise caching cannot be used.
+	 if (I != srpm2rpms.end()) {
+	    const vector<const char *> &rpmv = I->second;
+	    assert(rpmv.size() > 0);
+	    headerPutStringArray(newHeader, CRPMTAG_BINARY, (const char **) &rpmv[0], rpmv.size());
 	 }
-      };
-
-      map<string, vector<const char *> >::const_iterator I = srpm2rpms.find(fname);
-      if (I != srpm2rpms.end()) {
-	 const vector<const char *> &rpmv = I->second;
-	 assert(rpmv.size() > 0);
-	 headerPutStringArray(newHeader, CRPMTAG_BINARY, (const char **) &rpmv[0], rpmv.size());
-	 zWrite();
       }
-      else if (!mapi) { // write anyway
-	 zWrite();
+
+      hh.push_back(newHeader);
+      if (hh.size() == N_MERGE || entry_cur == entry_no - 1) {
+	 size_t zsize;
+	 void *zblob = zhdrv(hh, zsize);
+	 Fwrite(zblob, zsize, 1, outfd);
+	 free(zblob);
+	 for (size_t i = 0; i < hh.size(); i++)
+	    headerFree(hh[i]);
+	 hh.clear();
       }
 
       headerFree(h);
