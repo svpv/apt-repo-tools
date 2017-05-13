@@ -313,7 +313,6 @@ void usage()
    cerr << "                 distributions that use non-automatically generated" << endl;
    cerr << "                 file dependencies" << endl;
    cerr << " --bloater       generate both pkglist.comp and pkglist.comp+bloat" << endl;
-   cerr << " --append        append to the package file list, don't overwrite" << endl;
    cerr << " --progress      show a progress bar" << endl;
    cerr << " --cachedir=DIR  use a custom directory for package md5sum cache"<<endl;
    cerr << " --changelog-since <seconds>" <<endl;
@@ -368,7 +367,6 @@ int main(int argc, char ** argv)
    bool noScan = false;
    bool progressBar = false;
    const char *pkgListSuffix = NULL;
-   bool pkgListAppend = false;
    bool prevStdin = false;
    
    putenv((char *)"LC_ALL="); // Is this necessary yet (after i18n was supported)?
@@ -413,8 +411,6 @@ int main(int argc, char ** argv)
 	 noScan = true;
       } else if (strcmp(argv[i], "--progress") == 0) {
 	 progressBar = true;
-      } else if (strcmp(argv[i], "--append") == 0) {
-	 pkgListAppend = true;
       } else if (strcmp(argv[i], "--meta") == 0) {
 	 i++;
 	 if (i < argc) {
@@ -503,21 +499,10 @@ int main(int argc, char ** argv)
    }
 
    std::string bloater_path;
-   if (pkgListSuffix != NULL) {
-      bloater_path = pkglist_path + "/base/pkglist." + pkgListSuffix + "+bloat" ZHDR_SUFFIX;
-      pkglist_path = pkglist_path + "/base/pkglist." + pkgListSuffix + ZHDR_SUFFIX;
-   } else {
-      bloater_path = pkglist_path + "/base/pkglist." + op_suf + "+bloat" ZHDR_SUFFIX;
-      pkglist_path = pkglist_path + "/base/pkglist." + op_suf + ZHDR_SUFFIX;
-   }
+   bloater_path = pkglist_path + "/base/pkglist." + (pkgListSuffix ? : op_suf) + "+bloat" ZHDR_SUFFIX;
+   pkglist_path = pkglist_path + "/base/pkglist." + (pkgListSuffix ? : op_suf) + ZHDR_SUFFIX;
 
-   FD_t outfd;
-   if (pkgListAppend == true && FileExists(pkglist_path)) {
-      outfd = Fopen(pkglist_path.c_str(), "a");
-   } else {
-      unlink(pkglist_path.c_str());
-      outfd = Fopen(pkglist_path.c_str(), "w+");
-   }
+   FD_t outfd = Fopen(pkglist_path.c_str(), "w+");
    if (!outfd) {
       cerr << "genpkglist: error creating file " << pkglist_path << ": "
 	  << strerror(errno) << endl;
@@ -526,12 +511,7 @@ int main(int argc, char ** argv)
 
    FD_t bloaterfd = NULL;
    if (bloater) {
-      if (pkgListAppend == true && FileExists(bloater_path)) {
-	 bloaterfd = Fopen(bloater_path.c_str(), "a");
-      } else {
-	 unlink(bloater_path.c_str());
-	 bloaterfd = Fopen(bloater_path.c_str(), "w+");
-      }
+      bloaterfd = Fopen(bloater_path.c_str(), "w+");
       if (!bloaterfd) {
 	 cerr << "genpkglist: error creating file " << bloater_path << ": "
 	     << strerror(errno) << endl;

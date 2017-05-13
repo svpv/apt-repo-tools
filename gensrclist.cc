@@ -81,7 +81,6 @@ void usage()
    cerr << " --flat          use a flat directory structure, where RPMS and SRPMS"<<endl;
    cerr << "                 are in the same directory level"<<endl;
    cerr << " --meta <suffix> create source package file list with given suffix" << endl;
-   cerr << " --append        append to the source package file list, don't overwrite" << endl;
    cerr << " --progress      show a progress bar" << endl;
    cerr << " --cachedir=DIR  use a custom directory for package md5sum cache"<<endl;
    cerr << " --prev-stdin    read previous output from stdin and use it as a cache" << endl;
@@ -152,7 +151,6 @@ int main(int argc, char ** argv)
    bool flatStructure = false;
    char *arg_dir, *arg_suffix, *arg_srpmindex;
    const char *srcListSuffix = NULL;
-   bool srcListAppend = false;
    bool prevStdin = false;
 
    putenv((char *)"LC_ALL="); // Is this necessary yet (after i18n was supported)?
@@ -163,8 +161,6 @@ int main(int argc, char ** argv)
 	 flatStructure = true;
       } else if (strcmp(argv[i], "--progress") == 0) {
 	 progressBar = true;
-      } else if (strcmp(argv[i], "--append") == 0) {
-	 srcListAppend = true;
       } else if (strcmp(argv[i], "--meta") == 0) {
 	 i++;
 	 if (i < argc) {
@@ -265,18 +261,9 @@ int main(int argc, char ** argv)
       exit(1);
    }
    
-   if (srcListSuffix != NULL)
-      sprintf(buf, "%s/srclist.%s" ZHDR_SUFFIX, cwd, srcListSuffix);
-   else
-      sprintf(buf, "%s/srclist.%s" ZHDR_SUFFIX, cwd, arg_suffix);
+   sprintf(buf, "%s/srclist.%s" ZHDR_SUFFIX, cwd, srcListSuffix ? : arg_suffix);
    
-   FD_t outfd;
-   if (srcListAppend == true && FileExists(buf)) {
-      outfd = Fopen(buf, "a");
-   } else {
-      unlink(buf);
-      outfd = Fopen(buf, "w+");
-   }
+   FD_t outfd = Fopen(buf, "w+");
    if (!outfd) {
       cerr << "gensrclist: error creating file " << buf << ": "
 	  << strerror(errno) << endl;
