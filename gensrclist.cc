@@ -136,7 +136,8 @@ public:
    }
 };
 
-#include "zhdr.h"
+#include <lz4frame.h>
+#include "lz4writer.h"
 
 int main(int argc, char ** argv) 
 {
@@ -261,13 +262,30 @@ int main(int argc, char ** argv)
       exit(1);
    }
    
-   sprintf(buf, "%s/srclist.%s" ZHDR_SUFFIX, cwd, srcListSuffix ? : arg_suffix);
+   sprintf(buf, "%s/srclist.%s.lz4", cwd, srcListSuffix ? : arg_suffix);
    
-   FD_t outfd = Fopen(buf, "w+");
-   if (!outfd) {
+   int outfd = open(buf, O_RDWR | O_CREAT | O_TRUNC, 0666);
+   if (outfd < 0) {
       cerr << "gensrclist: error creating file " << buf << ": "
 	  << strerror(errno) << endl;
       return 1;
+   }
+
+   const char *err[2];
+   auto zwError = [err](const char *func)
+   {
+      if (strcmp(func, err[0]) == 0)
+	 fprintf(stderr, "gensrclist: %s: %s\n", err[0], err[1]);
+      else
+	 fprintf(stderr, "gensrclist: %s: %s: %s\n", func, err[0], err[1]);
+   };
+
+   struct lz4writer *zw = NULL;
+   if (entry_no) {
+      bool writeContentSize = true, writeChecksum = false;
+      zw = lz4writer_fdopen(outfd, writeContentSize, writeChecksum, err);
+      if (!zw)
+	 return zwError("lz4writer_open"), 1;
    }
 
    FD_t prevfd = NULL;
@@ -281,10 +299,6 @@ int main(int argc, char ** argv)
    HdlistReader prevhdlist(prevfd);
 
    CachedMD5 md5cache(string(arg_dir) + string(arg_suffix), "gensrclist");
-
-   const size_t N_MERGE = 8;
-   std::vector<Header> hh;
-   hh.reserve(N_MERGE);
 
    for (entry_cur = 0; entry_cur < entry_no; entry_cur++) {
 
@@ -317,6 +331,7 @@ int main(int argc, char ** argv)
       if (!newHeader) {
 	 newHeader = headerNew();
 	 copyTags(h, newHeader, numTags, tags);
+	 headerFree(h);
 	 addAptTags(newHeader, srpmdir.c_str(), fname, sb.st_size);
 
 	 char md5[34];
@@ -332,21 +347,22 @@ int main(int argc, char ** argv)
 	 }
       }
 
-      hh.push_back(newHeader);
-      if (hh.size() == N_MERGE || entry_cur == entry_no - 1) {
-	 size_t zsize;
-	 void *zblob = zhdrv(hh, zsize);
-	 Fwrite(zblob, zsize, 1, outfd);
-	 free(zblob);
-	 for (size_t i = 0; i < hh.size(); i++)
-	    headerFree(hh[i]);
-	 hh.clear();
-      }
+      const unsigned char headerMagic[8] = {
+	  0x8e, 0xad, 0xe8, 0x01, 0x00, 0x00, 0x00, 0x00
+      };
 
-      headerFree(h);
+      unsigned blobSize;
+      void *blob = headerExport(newHeader, &blobSize);
+      assert(blob);
+      headerFree(newHeader);
+
+      if (!(lz4writer_write(zw, headerMagic, 8, err) &&
+	    lz4writer_write(zw, blob, blobSize, err)))
+	 return zwError("lz4writer_write"), 1;
    } 
    
-   Fclose(outfd);
+   if (zw && !lz4writer_close(zw, err))
+      return zwError("lz4wirter_close"), 1;
 
    return 0;
 }
